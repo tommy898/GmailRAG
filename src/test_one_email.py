@@ -1,9 +1,50 @@
 from pathlib import Path
-
+import base64
+from bs4 import BeautifulSoup#for html to text conversion
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+
+def decode_base64url(data):
+    decoded_bytes = base64.urlsafe_b64decode(data + "===")
+    return decoded_bytes.decode("utf-8", errors="replace")#decode body to utf-8 and replace any invalid characters with a replacement character
+
+def html_to_text(html):
+    soup = BeautifulSoup(html, "html.parser")
+    return soup.get_text(separator = "\n", strip = True) #html -> text
+
+def collect_email_text_parts(payload, plain_text_parts, html_parts):
+    mime_type = payload.get("mimeType")
+    body_data = payload.get("body", {}).get("data")
+
+    if body_data:
+        decoded_text = decode_base64url(body_data)
+
+        if mime_type == "text/plain":
+            plain_text_parts.append(decoded_text)
+        elif mime_type == "text/html":
+            html_parts.append(decoded_text)
+    for part in payload.get("parts", []):
+        collect_email_text_parts(part, plain_text_parts, html_parts)
+
+
+def extract_email_text(message):
+    plain_text_parts = []
+    html_parts = []
+
+    collect_email_text_parts(
+        message["payload"],
+        plain_text_parts,
+        html_parts
+    )
+
+    if plain_text_parts != []:
+        return "\n".join(plain_text_parts)
+    if html_parts != []:
+        return html_to_text("\n".join(html_parts))
+    return ""
+
 
 SCOPES = ["https://www.googleapis.com/auth/gmail.readonly"]
 
@@ -58,7 +99,23 @@ for header in headers:
     value = header["value"]
     headers_dict[name] = value
 
-print("From:", headers_dict.get("from", ""))
-print("To:", headers_dict.get("to", ""))
-print("Subject:", headers_dict.get("subject", ""))
-print("Date:", headers_dict.get("date", ""))
+
+body = extract_email_text(full_message)
+
+email_record = {
+    "message_id": full_message["id"],
+    "thread_id": full_message["threadId"],
+    "from_email": headers_dict.get("from", ""),
+    "to_email": headers_dict.get("to", ""),
+    "subject": headers_dict.get("subject", ""),
+    "date": headers_dict.get("date", ""),
+    "snippet": full_message.get("snippet", ""),
+    "body": body,
+}
+print("Message ID:", email_record["message_id"])
+print("From:", email_record["from_email"])
+print("To:", email_record["to_email"])
+print("Subject:", email_record["subject"])
+print("Date:", email_record["date"])
+print("Snippet:", email_record["snippet"])
+print("Body preview:", email_record["body"][:500])#first 500 characters of the body
