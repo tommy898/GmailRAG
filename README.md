@@ -1,6 +1,6 @@
 # GmailRAG Unfinished
 
-1. Fetch emails from Gmail using the Gmail API.
+1. Fetch emails from Gmail using the Gmail API
 2. Store email records in SQLite.
 3. Chunking
    - Start with one chunk per email.
