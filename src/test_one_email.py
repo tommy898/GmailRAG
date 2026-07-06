@@ -1,4 +1,5 @@
 from pathlib import Path
+import sqlite3
 import base64
 from bs4 import BeautifulSoup#for html to text conversion
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -112,10 +113,37 @@ email_record = {
     "snippet": full_message.get("snippet", ""),
     "body": body,
 }
-print("Message ID:", email_record["message_id"])
-print("From:", email_record["from_email"])
-print("To:", email_record["to_email"])
-print("Subject:", email_record["subject"])
-print("Date:", email_record["date"])
-print("Snippet:", email_record["snippet"])
-print("Body preview:", email_record["body"][:500])#first 500 characters of the body
+
+connection = sqlite3.connect("data/gmailrag.sqlite3")
+cursor = connection.cursor()
+
+cursor.execute(
+    """
+    INSERT OR REPLACE INTO emails (
+        message_id,
+        thread_id,
+        from_email,
+        to_email,
+        subject,
+        date,
+        snippet,
+        body
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """,
+    (
+        email_record["message_id"],
+        email_record["thread_id"],
+        email_record["from_email"],
+        email_record["to_email"],
+        email_record["subject"],
+        email_record["date"],
+        email_record["snippet"],
+        email_record["body"],
+    ),
+)
+
+connection.commit()
+connection.close()
+
+print("Saved email to SQLite:", email_record["message_id"])
