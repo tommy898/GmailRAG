@@ -7,8 +7,8 @@
    - If an email body is over 2,000 characters, split it into chunks under 2,000 characters with 300 characters of overlap.
 4. Create embeddings for each chunk with default built-in chroma model, all-MiniLM-L6-v2.
 5. Store vectors and chunk metadata in ChromaDB.
-6. Retrieve relevant chunks with squared L2 distance.
-7. Rerank retrieved chunks.
-8. Generate an answer using the retrieved email context.
+6. Retrieve 20 relevant chunks with squared L2 distance.
+7. Rerank retrieved chunks and come up with 5 most relevant chunks.
+8. Generate an answer with the retrieved chunks
 
 
