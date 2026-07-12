@@ -2,9 +2,9 @@ import sqlite3
 
 
 DB_PATH = "data/gmailrag.sqlite3"
-CHUNK_SIZE = 2000
-CHUNK_OVERLAP = 300
-#2000 characters per chunk. If exceeds 2000 char per email, split and apply 300 overlap.
+CHUNK_SIZE = 1000
+CHUNK_OVERLAP = 150
+#1000 characters per chunk. If exceeds 1000 char per email, split and apply 150 overlap.
 
 def build_email_text(email):
     parts = [
