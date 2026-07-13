@@ -1,5 +1,10 @@
 # (unfinished) GmailRAG from scratch
 
+Working to deploy...
+
+
+
+Current State (local):
 1. Fetch emails from Gmail using the Gmail API (ingestion)
 2. Store email records in SQLite. (ingestion)
 3. Chunking
