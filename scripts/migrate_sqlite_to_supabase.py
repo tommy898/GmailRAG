@@ -1,7 +1,11 @@
+#this script does not work anymore since I removed migration logic in /backend
+
+
 import argparse
 import os
 import sqlite3
 import sys
+import uuid
 from pathlib import Path
 
 
@@ -16,9 +20,26 @@ from app.ingestion import (
     ensure_gmail_account,
     ensure_profile,
     replace_chunks_and_embeddings_for_email,
-    stable_demo_profile_id,
     upsert_email,
 )
+
+
+def stable_demo_profile_id(email: str) -> uuid.UUID:
+    normalized_email = email.strip().lower()
+    return uuid.uuid5(uuid.NAMESPACE_URL, f"gmailrag-demo-profile:{normalized_email}")
+
+
+def normalize_sqlite_email(row: sqlite3.Row) -> dict:
+    return {
+        "gmail_message_id": row["message_id"],
+        "gmail_thread_id": row["thread_id"],
+        "from_email": row["from_email"],
+        "to_email": row["to_email"],
+        "subject": row["subject"],
+        "gmail_date_raw": row["date"],
+        "snippet": row["snippet"],
+        "body_text": row["body"],
+    }
 
 
 def read_sqlite_emails(sqlite_path: Path, limit: int | None) -> list[dict]:
@@ -50,7 +71,7 @@ def read_sqlite_emails(sqlite_path: Path, limit: int | None) -> list[dict]:
 
     connection.close()
 
-    return [dict(row) for row in rows]
+    return [normalize_sqlite_email(row) for row in rows]
 
 
 def get_required_env(name: str) -> str:

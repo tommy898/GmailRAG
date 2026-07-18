@@ -65,6 +65,33 @@ App returns a grounded answer with source emails
 
 Redis is not required for v1. Use Postgres job rows first. Add Redis later only if job volume or reliability requirements justify it.
 
+## Worker Role
+
+The background worker is not primarily for OAuth.
+
+OAuth should usually stay in normal API routes:
+
+```text
+redirect user to Google
+receive OAuth callback
+exchange code for tokens
+store token metadata
+```
+
+The worker is for slow indexing jobs that should not block an HTTP request:
+
+```text
+fetch many Gmail messages
+parse and clean email bodies
+insert normalized email rows
+chunk email text
+embed thousands of chunks
+store vectors in pgvector
+mark sync jobs done or failed
+```
+
+The API route should create a `sync_jobs` row and return quickly. The worker should poll `sync_jobs`, process pending jobs, and update job status.
+
 ## Target Architecture
 
 ```text
@@ -319,31 +346,72 @@ source chunks are linked to the answer
 answer history can be queried later
 ```
 
-### Milestone 7: Gmail OAuth Sync
+### Milestone 7: Google OAuth Authorization
 
-Goal: avoid doing slow Gmail sync and embedding work inside normal web requests.
+Goal: let a real user connect a Gmail account through Google OAuth.
 
-This replaces the one-time SQLite migration with real web Gmail sync.
+This milestone is about authorization only. It proves the app can ask Google for Gmail access, receive the OAuth callback, and store the account metadata needed for future sync jobs.
 
 Build:
 
 ```text
 Google Cloud web OAuth client
+OAuth consent screen test-user setup
+minimal Gmail readonly scope
+OAuth callback route
 gmail_accounts token storage
+```
+
+Endpoints:
+
+```text
+GET /gmail/connect
+GET /gmail/callback
+```
+
+Completion criteria:
+
+```text
+user can start Google OAuth from the app
+Google redirects back to the backend callback
+backend stores the connected Gmail account
+tokens are stored server-side only
+frontend never sees Gmail tokens
+```
+
+### Milestone 8: Background Sync Worker
+
+Goal: replace the one-time SQLite migration with real web Gmail sync and indexing.
+
+This milestone uses the Gmail account created by Milestone 7. The worker is the part that loops over many emails and calls the shared production ingestion pipeline.
+
+Build:
+
+```text
 backend/app/gmail_service.py
-POST /gmail/connect
+backend/app/worker.py or worker.py
 POST /gmail/sync
 GET  /sync/status
 ```
 
 Use the Postgres `sync_jobs` table first. Redis is not required for v1.
 
+API responsibilities:
+
+```text
+POST /gmail/sync creates a sync_jobs row
+GET /sync/status reads job progress
+normal API requests return quickly
+```
+
 Worker responsibilities:
 
 ```text
 poll pending sync_jobs
+load stored Gmail account credentials
 fetch Gmail messages
 normalize email records
+call ingestion.py for each email
 chunk email text
 embed chunks
 store vectors in pgvector
@@ -354,14 +422,14 @@ record error messages
 Completion criteria:
 
 ```text
-user can connect Gmail as a test user
 POST /gmail/sync creates a job
 worker processes the job
+worker calls the shared ingestion functions
 GET /sync/status reports progress
 failed jobs store readable errors
 ```
 
-### Milestone 8: Next.js Frontend
+### Milestone 9: Next.js Frontend
 
 Goal: build the user-facing website.
 
@@ -399,7 +467,7 @@ user can ask a question
 answer and source cards render correctly
 ```
 
-### Milestone 9: Deployment And Polish
+### Milestone 10: Deployment And Polish
 
 Goal: make the project credible as a complete internship portfolio project.
 

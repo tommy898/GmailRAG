@@ -7,16 +7,19 @@ from app.embeddings import (
     EMBEDDING_MODEL,
     embed_texts,
 )
-
-
-def stable_demo_profile_id(email: str) -> uuid.UUID:
-    normalized_email = email.strip().lower()
-    return uuid.uuid5(uuid.NAMESPACE_URL, f"gmailrag-demo-profile:{normalized_email}")
-
+#chunks and embeds one email(call from embedding.py)
 
 def embedding_to_pgvector(embedding: Sequence[float]) -> str:
     return "[" + ",".join(str(float(value)) for value in embedding) + "]"
 
+
+def require_email_value(email: Mapping[str, object], key: str) -> str:
+    value = email.get(key)
+
+    if not value:
+        raise ValueError(f"email record is missing {key}")
+
+    return str(value)
 
 def ensure_profile(
     conn,
@@ -67,16 +70,13 @@ def ensure_gmail_account(
 
         return cursor.fetchone()[0]
 
-
+#if exist, update, else insert
 def upsert_email(
     conn,
     gmail_account_id: uuid.UUID,
     email: Mapping[str, object],
 ) -> uuid.UUID:
-    gmail_message_id = email.get("gmail_message_id") or email.get("message_id")
-
-    if not gmail_message_id:
-        raise ValueError("email record is missing gmail_message_id/message_id")
+    gmail_message_id = require_email_value(email, "gmail_message_id")
 
     with conn.cursor() as cursor:
         cursor.execute(
@@ -106,14 +106,14 @@ def upsert_email(
             """,
             (
                 gmail_account_id,
-                str(gmail_message_id),
-                email.get("gmail_thread_id") or email.get("thread_id"),
+                gmail_message_id,
+                email.get("gmail_thread_id"),
                 email.get("from_email"),
                 email.get("to_email"),
                 email.get("subject"),
-                email.get("gmail_date_raw") or email.get("date"),
+                email.get("gmail_date_raw"),
                 email.get("snippet"),
-                email.get("body_text") or email.get("body"),
+                email.get("body_text"),
             ),
         )
 
@@ -211,4 +211,3 @@ def upsert_embedding(
         )
 
         return cursor.fetchone()[0]
-

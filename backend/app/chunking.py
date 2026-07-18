@@ -16,12 +16,8 @@ def safe_text(value: object) -> str:
 def build_email_text(email: Mapping[str, object]) -> str:
     subject = safe_text(email.get("subject"))
     from_email = safe_text(email.get("from_email"))
-    date = safe_text(
-        email.get("date")
-        or email.get("gmail_date_raw")
-        or email.get("sent_at")
-    )
-    body = safe_text(email.get("body_text") or email.get("body"))
+    date = safe_text(email.get("gmail_date_raw") or email.get("sent_at"))
+    body = safe_text(email.get("body_text"))
 
     parts = [
         f"Subject: {subject}",
@@ -70,4 +66,3 @@ def chunk_text(
 
 def chunk_email(email: Mapping[str, object]) -> list[str]:
     return chunk_text(build_email_text(email))
-
