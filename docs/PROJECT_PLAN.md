@@ -110,53 +110,27 @@ terminal input/output     -> FastAPI endpoint + Next.js UI
 
 ## Build Order
 
-### Milestone 1: Production Schema
+### Milestone 1: FastAPI Backend Skeleton
 
-Goal: define the Supabase Postgres schema before building screens.
-
-Deliverables:
-
-```text
-schema.sql or migration files
-pgvector enabled
-tables for users/accounts/emails/chunks/embeddings/jobs/answers/sources
-clear foreign keys
-unique constraints for Gmail message IDs
-indexes for account_id, email_id, chunk_id, sync status, vector search
-```
-
-Completion criteria:
-
-```text
-Supabase project exists
-schema can be applied from scratch
-tables match the local demo's data model
-```
-
-### Milestone 2: FastAPI Backend Skeleton
-
-Goal: create a deployable Python backend with health checks and basic structure.
+Goal: create a Python backend with health checks, database connectivity, and a stable API boundary.
 
 Endpoints:
 
 ```text
 GET  /health
 POST /ask
-POST /gmail/connect
-POST /gmail/sync
-GET  /sync/status
-GET  /answers/{answer_id}
+GET  /db-health
 ```
 
 Deliverables:
 
 ```text
 FastAPI app
-environment variable loading
-database connection
-basic request/response models
-local dev command
-Render deployment config
+DATABASE_URL environment variable
+Supabase Postgres connection
+schemas.py for request/response models
+rag.py production boundary
+/ask route wired to the RAG boundary
 ```
 
 Completion criteria:
@@ -165,31 +139,137 @@ Completion criteria:
 backend runs locally
 GET /health returns ok
 backend can connect to Supabase
-backend can be deployed to Render
+POST /ask route exists
 ```
 
-### Milestone 3: Port The RAG Pipeline
-
-Goal: move the proven local logic into backend modules.
-
-Replace local storage:
+Status:
 
 ```text
-sqlite3 reads/writes -> Postgres queries
-Chroma search        -> pgvector search
-terminal ask.py      -> POST /ask
+complete locally
 ```
 
-Backend modules:
+### Milestone 2: Production Data Pipeline
+
+Goal: populate Supabase with real searchable email data.
+
+This milestone uses the existing local SQLite demo data as the first bridge into production storage. Real Gmail OAuth sync comes later.
+
+Build:
 
 ```text
-gmail_service.py
-chunking.py
-embeddings.py
-retrieval.py
-reranking.py
-generation.py
-sources.py
+backend/app/chunking.py
+backend/app/embeddings.py
+backend/app/ingestion.py
+scripts/migrate_sqlite_to_supabase.py
+```
+
+Flow:
+
+```text
+local SQLite emails
+↓
+Supabase emails
+↓
+chunk text
+↓
+Supabase email_chunks
+↓
+embed chunks
+↓
+Supabase email_embeddings with pgvector
+```
+
+Completion criteria:
+
+```text
+existing local emails can be inserted into Supabase
+chunks can be recreated with production chunking code
+chunk embeddings are stored in email_embeddings
+pgvector rows use 384-dimensional vectors
+the migration can be rerun safely without duplicate records
+```
+
+### Milestone 3: Production Retrieval
+
+Goal: make the backend retrieve relevant chunks from Supabase/pgvector.
+
+Build:
+
+```text
+backend/app/retrieval.py
+```
+
+Flow:
+
+```text
+question
+↓
+embed question
+↓
+SQL vector search against email_embeddings
+↓
+join email_chunks and emails metadata
+↓
+return top candidate chunks
+```
+
+Completion criteria:
+
+```text
+retrieval function accepts a question string
+retrieval function returns top candidate chunks from Supabase
+results include chunk text, subject, sender, date, distance, and chunk_id
+no local ChromaDB dependency remains in backend retrieval
+```
+
+### Milestone 4: Reranking
+
+Goal: improve retrieval quality before sending context to the LLM.
+
+Build:
+
+```text
+backend/app/reranking.py
+```
+
+Flow:
+
+```text
+top 20 pgvector candidates
+↓
+cross-encoder reranker
+↓
+top 5 final sources
+```
+
+Completion criteria:
+
+```text
+reranker accepts candidate chunks from retrieval
+reranker returns sorted candidates with scores
+top reranked sources match or improve local demo quality
+```
+
+### Milestone 5: Generation
+
+Goal: make `/ask` return real grounded answers.
+
+Build:
+
+```text
+backend/app/generation.py
+```
+
+Flow:
+
+```text
+question + top reranked sources
+↓
+Gemini Flash
+↓
+answer text
+↓
+AskResponse JSON
 ```
 
 Completion criteria:
@@ -202,11 +282,61 @@ calls Gemini
 returns answer + source metadata as JSON
 ```
 
-### Milestone 4: Background Sync Worker
+### Milestone 6: Persistence
+
+Goal: store user questions, generated answers, and source citations.
+
+Use existing tables:
+
+```text
+queries
+answers
+answer_sources
+```
+
+Flow:
+
+```text
+POST /ask
+↓
+save query
+↓
+generate answer
+↓
+save answer
+↓
+save source links
+↓
+return response
+```
+
+Completion criteria:
+
+```text
+each question is stored
+each answer is stored
+source chunks are linked to the answer
+answer history can be queried later
+```
+
+### Milestone 7: Gmail OAuth Sync
 
 Goal: avoid doing slow Gmail sync and embedding work inside normal web requests.
 
-Use a Postgres `sync_jobs` table first.
+This replaces the one-time SQLite migration with real web Gmail sync.
+
+Build:
+
+```text
+Google Cloud web OAuth client
+gmail_accounts token storage
+backend/app/gmail_service.py
+POST /gmail/connect
+POST /gmail/sync
+GET  /sync/status
+```
+
+Use the Postgres `sync_jobs` table first. Redis is not required for v1.
 
 Worker responsibilities:
 
@@ -224,13 +354,14 @@ record error messages
 Completion criteria:
 
 ```text
+user can connect Gmail as a test user
 POST /gmail/sync creates a job
 worker processes the job
 GET /sync/status reports progress
 failed jobs store readable errors
 ```
 
-### Milestone 5: Next.js Frontend
+### Milestone 8: Next.js Frontend
 
 Goal: build the user-facing website.
 
@@ -262,14 +393,13 @@ Completion criteria:
 
 ```text
 frontend deployed on Vercel
-custom domain connected
 user can sign in
 user can trigger Gmail sync
 user can ask a question
 answer and source cards render correctly
 ```
 
-### Milestone 6: Deployment And Polish
+### Milestone 9: Deployment And Polish
 
 Goal: make the project credible as a complete internship portfolio project.
 
@@ -363,22 +493,3 @@ token.json
 data/
 .venv/
 ```
-
-## Immediate Next Step
-
-Start with the production database design.
-
-Next concrete task:
-
-```text
-Draft the Supabase Postgres + pgvector schema.
-```
-
-Reason:
-
-```text
-The schema defines the backend contract.
-The backend API depends on the schema.
-The frontend depends on the backend API.
-```
-
