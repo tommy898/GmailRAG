@@ -1,6 +1,6 @@
 # (unfinished) GmailRAG from scratch
 
-Working to deploy...
+Working to have a actual web app...
 
 
 

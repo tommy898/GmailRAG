@@ -1,17 +1,8 @@
 # GmailRAG Project Plan
 
-## Current State
 
 GmailRAG has a working local RAG demo pipeline:
 
-1. Fetch Gmail messages into SQLite.
-2. Normalize email fields into the `emails` table.
-3. Chunk emails into the `email_chunks` table.
-4. Embed chunks into local ChromaDB.
-5. Retrieve candidate chunks with Chroma.
-6. Rerank retrieved chunks with a local cross-encoder.
-7. Generate grounded answers with Gemini Flash using the top reranked chunks.
-8. Print answers with source email metadata.
 
 The local demo is functionally complete. It should now be treated as the reference implementation while the project moves into the web-product phase.
 
