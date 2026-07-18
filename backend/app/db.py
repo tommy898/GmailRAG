@@ -14,5 +14,5 @@ def fetch_database_time():
             cursor.execute("select now();")
             return cursor.fetchone()[0]
         
-    return row[0]
+    
 
