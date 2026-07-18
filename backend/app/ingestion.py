@@ -9,7 +9,7 @@ from app.embeddings import (
 )
 #chunks and embeds one email(call from embedding.py)
 
-def embedding_to_pgvector(embedding: Sequence[float]) -> str:
+def embedding_to_pgvector(embedding: Sequence[float]) -> str:#python float list to pgvector
     return "[" + ",".join(str(float(value)) for value in embedding) + "]"
 
 
