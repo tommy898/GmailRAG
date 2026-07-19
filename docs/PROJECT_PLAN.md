@@ -323,6 +323,13 @@ calls Gemini
 returns answer + source metadata as JSON
 ```
 
+Status:
+
+```text
+complete
+POST /ask verified end to end with Supabase retrieval, cross-encoder reranking, Gemini 3.5 Flash generation, inline source citations, and source metadata
+```
+
 ### Milestone 6: Persistence
 
 Goal: store user questions, generated answers, and source citations.
