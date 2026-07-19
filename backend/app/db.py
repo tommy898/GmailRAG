@@ -1,6 +1,11 @@
 import os
+from collections.abc import Sequence
 
 import psycopg
+
+
+def embedding_to_pgvector(embedding: Sequence[float]) -> str:
+    return "[" + ",".join(str(float(value)) for value in embedding) + "]"
 
 
 def get_database_url():

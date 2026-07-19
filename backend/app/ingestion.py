@@ -2,15 +2,13 @@ import uuid
 from collections.abc import Mapping, Sequence
 
 from app.chunking import CHUNKER_VERSION, chunk_email
+from app.db import embedding_to_pgvector
 from app.embeddings import (
     EMBEDDING_DIMENSION,
     EMBEDDING_MODEL,
     embed_texts,
 )
 #chunks and embeds one email(call from embedding.py)
-
-def embedding_to_pgvector(embedding: Sequence[float]) -> str:#python float list to pgvector
-    return "[" + ",".join(str(float(value)) for value in embedding) + "]"
 
 
 def require_email_value(email: Mapping[str, object], key: str) -> str:

@@ -1,4 +1,4 @@
-# GmailRAG Project Plan
+# GmailRAG Project Plan (for AI Agent)
 
 
 GmailRAG has a working local RAG demo pipeline:
@@ -399,6 +399,18 @@ Goal: replace the one-time SQLite migration with real web Gmail sync and indexin
 
 This milestone uses the Gmail account created by Milestone 7. The worker is the part that loops over many emails and calls the shared production ingestion pipeline.
 
+Indexing flow cleanup note:
+
+Before connecting the background worker, clean up the current indexing boundary. `replace_chunks_and_embeddings_for_email()` currently coordinates chunking, chunk persistence, embedding generation, and embedding persistence in one function. Preserve `chunking.py` as the pure text-processing layer and `embeddings.py` as the pure vector-generation layer, while splitting the database and orchestration work into clearer operations such as:
+
+```text
+replace_email_chunks()
+embed_and_store_chunks()
+index_email()
+```
+
+The worker should call the high-level indexing operation rather than reproduce chunking, embedding, or database logic.
+
 Build:
 
 ```text
@@ -442,6 +454,8 @@ worker calls the shared ingestion functions
 GET /sync/status reports progress
 failed jobs store readable errors
 ```
+
+
 
 ### Milestone 9: Next.js Frontend
 

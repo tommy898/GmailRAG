@@ -1,6 +1,5 @@
-from app.db import get_connection
+from app.db import embedding_to_pgvector, get_connection
 from app.embeddings import EMBEDDING_MODEL, embed_text
-from app.ingestion import embedding_to_pgvector
 
 def retrieve_chunks(question: str, limit: int = 20) -> list[dict]:  #20 candidates
     query_embedding = embed_text(question)
@@ -51,4 +50,3 @@ def retrieve_chunks(question: str, limit: int = 20) -> list[dict]:  #20 candidat
             }
         )
     return candidates
-            
