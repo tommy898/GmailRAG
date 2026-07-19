@@ -207,6 +207,15 @@ pgvector rows use 384-dimensional vectors
 the migration can be rerun safely without duplicate records
 ```
 
+Status:
+
+```text
+complete
+1000 emails migrated
+4861 chunks created
+4861 embeddings stored
+```
+
 ### Milestone 3: Production Retrieval
 
 Goal: make the backend retrieve relevant chunks from Supabase/pgvector.
@@ -240,6 +249,13 @@ results include chunk text, subject, sender, date, distance, and chunk_id
 no local ChromaDB dependency remains in backend retrieval
 ```
 
+Status:
+
+```text
+complete
+POST /ask retrieves real pgvector source chunks from Supabase
+```
+
 ### Milestone 4: Reranking
 
 Goal: improve retrieval quality before sending context to the LLM.
@@ -247,7 +263,7 @@ Goal: improve retrieval quality before sending context to the LLM.
 Build:
 
 ```text
-backend/app/reranking.py
+backend/app/rerank.py
 ```
 
 Flow:
@@ -266,6 +282,13 @@ Completion criteria:
 reranker accepts candidate chunks from retrieval
 reranker returns sorted candidates with scores
 top reranked sources match or improve local demo quality
+```
+
+Status:
+
+```text
+complete
+POST /ask returns reranked sources with cross-encoder scores
 ```
 
 ### Milestone 5: Generation

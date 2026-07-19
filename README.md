@@ -14,6 +14,6 @@ Current State (local):
 5. Store vectors and chunk metadata in ChromaDB.
 6. Retrieve 20 relevant chunks with squared L2 distance.
 7. Rerank retrieved chunks and come up with 5 most relevant chunks.
-8. Generate an answer with the retrieved chunks
+8. Generate an answer by Gemini with the retrieved chunks
 
 

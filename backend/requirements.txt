@@ -2,3 +2,4 @@ fastapi
 uvicorn[standard]
 psycopg[binary]
 sentence-transformers
+google-genai
