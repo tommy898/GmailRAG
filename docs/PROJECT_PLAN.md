@@ -367,6 +367,13 @@ source chunks are linked to the answer
 answer history can be queried later
 ```
 
+Status:
+
+```text
+deferred / post-v1
+The v1 /ask response already returns the generated answer and its sources without requiring database persistence. Revisit this milestone when answer history, auditing, analytics, sharing, or user feedback becomes part of the product.
+```
+
 ### Milestone 7: Google OAuth Authorization
 
 Goal: let a real user connect a Gmail account through Google OAuth.
