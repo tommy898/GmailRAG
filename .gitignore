@@ -3,7 +3,7 @@ __pycache__/
 *.pyc
 .DS_Store
 .ipynb_checkpoints/
-
+local src/
 .env
 credentials.json
 token.json
@@ -11,4 +11,3 @@ token.json
 data/
 notebooks/
 .vscode/
-local src/
