@@ -3,3 +3,4 @@ uvicorn[standard]
 psycopg[binary]
 sentence-transformers
 google-genai
+PyJWT[crypto]
