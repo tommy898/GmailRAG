@@ -11,3 +11,4 @@ token.json
 data/
 notebooks/
 .vscode/
+local src/
