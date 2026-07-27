@@ -1,7 +1,14 @@
+import uuid
+
 from app.db import embedding_to_pgvector, get_connection
 from app.embeddings import EMBEDDING_MODEL, embed_text
 
-def retrieve_chunks(question: str, limit: int = 20) -> list[dict]:  #20 candidates
+
+def retrieve_chunks(
+    question: str,
+    profile_id: uuid.UUID,
+    limit: int = 20,
+) -> list[dict]:  # 20 candidates
     query_embedding = embed_text(question)
     query_vector = embedding_to_pgvector(query_embedding)
     #L2 distance
@@ -20,13 +27,16 @@ def retrieve_chunks(question: str, limit: int = 20) -> list[dict]:  #20 candidat
                 from email_embeddings ee
                 join email_chunks c on c.id = ee.chunk_id
                 join emails e on e.id = c.email_id
+                join gmail_accounts ga on ga.id = e.gmail_account_id
                 where ee.embedding_model = %s
+                    and ga.profile_id = %s
                 order by ee.embedding <-> %s::vector
                 limit %s
                 """,
                 (
                     query_vector,
                     EMBEDDING_MODEL,
+                    profile_id,
                     query_vector,
                     limit,
                 ),

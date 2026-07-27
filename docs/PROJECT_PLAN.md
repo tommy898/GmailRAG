@@ -528,6 +528,16 @@ demo screenshots
 privacy/security notes
 ```
 
+Deployment CORS note:
+
+```text
+Keep FastAPI CORS enabled when the deployed frontend and backend use different origins.
+Replace the local http://localhost:3000 allowlist entry with the exact production frontend URL.
+Keep localhost origins for local development only; do not include them in the production allowlist.
+Do not use a wildcard production origin for authenticated requests.
+If production later uses a same-origin proxy, the browser-facing CORS middleware may be removed.
+```
+
 Completion criteria:
 
 ```text

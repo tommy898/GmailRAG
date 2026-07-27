@@ -1,3 +1,5 @@
+import uuid
+
 from app.generation import generate_answer
 from app.retrieval import retrieve_chunks
 from app.rerank import rerank_candidates
@@ -6,8 +8,11 @@ from app.schemas import AskResponse, Source
 # Rag.py only orchestrates retrieving, reranking, generating, and formatting sources.
 
 
-def answer_question(question: str) -> AskResponse:
-    candidates = retrieve_chunks(question)
+def answer_question(
+    question: str,
+    profile_id: uuid.UUID,
+) -> AskResponse:
+    candidates = retrieve_chunks(question, profile_id)
     reranked_candidates = rerank_candidates(question, candidates)
     answer = generate_answer(question, reranked_candidates)
 
