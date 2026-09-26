@@ -19,55 +19,6 @@ def require_email_value(email: Mapping[str, object], key: str) -> str:
 
     return str(value)
 
-def ensure_profile(
-    conn,
-    profile_id: uuid.UUID,
-    email: str,
-    display_name: str | None = None,
-) -> uuid.UUID:
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            insert into profiles (id, email, display_name)
-            values (%s, %s, %s)
-            on conflict (id) do update set
-                email = excluded.email,
-                display_name = coalesce(excluded.display_name, profiles.display_name),
-                updated_at = now()
-            returning id
-            """,
-            (profile_id, email, display_name),
-        )
-
-        return cursor.fetchone()[0]
-
-
-def ensure_gmail_account(
-    conn,
-    profile_id: uuid.UUID,
-    gmail_address: str,
-) -> uuid.UUID:
-    with conn.cursor() as cursor:
-        cursor.execute(
-            """
-            insert into gmail_accounts (
-                profile_id,
-                gmail_address,
-                sync_status,
-                last_synced_at
-            )
-            values (%s, %s, 'ready', now())
-            on conflict (profile_id, gmail_address) do update set
-                sync_status = 'ready',
-                last_synced_at = now(),
-                updated_at = now()
-            returning id
-            """,
-            (profile_id, gmail_address),
-        )
-
-        return cursor.fetchone()[0]
-
 #if exist, update, else insert
 def upsert_email(
     conn,
