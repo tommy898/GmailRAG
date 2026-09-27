@@ -8,7 +8,7 @@ The local demo is functionally complete. It should now be treated as the referen
 
 ## Product Goal
 
-Build an web app that lets a user connect Gmail, sync recent emails, and ask natural-language questions about their inbox.
+Build a web app that lets a user connect Gmail, sync recent emails, and ask natural-language questions about their inbox.
 
 The deployed product should demonstrate:
 
@@ -407,6 +407,32 @@ tokens are stored server-side only
 frontend never sees Gmail tokens
 ```
 
+Implementation status:
+
+```text
+7.1  Supabase Google Sign-In configured and verified
+7.2  Minimal Next.js authentication shell complete
+7.3  auth.users UUID synchronized with profiles.id
+7.4  FastAPI Supabase JWT verification complete
+7.5  /ask protected and retrieval filtered by authenticated profile
+7.6  Separate Gmail Access web OAuth client configured
+7.7  Gmail OAuth environment and Fernet token encryption complete
+7.8  Authenticated GET /gmail/connect complete
+7.9  GET /gmail/callback, PKCE, encrypted token upsert, and frontend feedback complete
+7.10 JWT, OAuth, logging, token, and two-account isolation verification complete
+7.11 Environment, callback, test-user, and security documentation complete
+```
+
+Status:
+
+```text
+complete locally
+33 backend security/OAuth tests pass
+frontend lint and production build pass
+live two-account test confirmed profile isolation
+reconnection preserved the original gmail_accounts row and all indexed data
+```
+
 ### Milestone 8: Background Sync Worker
 
 Goal: replace the one-time SQLite migration with real web Gmail sync and indexing.
@@ -594,15 +620,33 @@ server-side token handling
 no secrets in frontend code
 ```
 
-Secrets must stay in environment variables or managed platform secrets:
+Private values must stay in environment variables or managed platform secrets:
 
 ```text
+DATABASE_URL
 GEMINI_API_KEY
 GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET
-SUPABASE_SERVICE_ROLE_KEY
-DATABASE_URL
+TOKEN_ENCRYPTION_KEY
 ```
+
+Backend configuration also includes the public project URL and exact OAuth origins:
+
+```text
+SUPABASE_URL
+GOOGLE_REDIRECT_URI
+FRONTEND_URL
+```
+
+The frontend may contain only public configuration:
+
+```text
+NEXT_PUBLIC_SUPABASE_URL
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+NEXT_PUBLIC_API_URL
+```
+
+The publishable key identifies the Supabase project; it is not a database secret. Keep RLS enabled and do not expose database credentials or a service-role key to the frontend.
 
 Never commit:
 
