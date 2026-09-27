@@ -20,6 +20,7 @@ from app.gmail_accounts import (
 from app.gmail_oauth import (
     GMAIL_READONLY_SCOPE,
     GmailAccountMismatchError,
+    GmailOAuthExchangeError,
     InvalidGmailOAuthStateError,
     MissingGmailScopeError,
     build_gmail_authorization_url,
@@ -27,6 +28,7 @@ from app.gmail_oauth import (
     create_gmail_oauth_state,
     parse_gmail_oauth_state,
 )
+from app.gmail_service import GmailProfileError
 from app.main import RedactOAuthCallbackQueryFilter, app
 
 
@@ -247,6 +249,54 @@ class GmailConnectionTests(unittest.TestCase):
 
         exchange_code.assert_not_called()
 
+    @patch("app.gmail_oauth.upsert_gmail_account_credentials")
+    @patch("app.gmail_oauth.get_gmail_address")
+    @patch("app.gmail_oauth.exchange_gmail_authorization_code")
+    @patch("app.gmail_oauth.get_profile_email")
+    @patch("app.gmail_oauth.parse_gmail_oauth_state")
+    def test_token_exchange_failure_writes_nothing(
+        self,
+        parse_state,
+        get_profile_email,
+        exchange_code,
+        get_gmail_address,
+        upsert_account,
+    ):
+        parse_state.return_value.profile_id = self.profile_id
+        parse_state.return_value.code_verifier = "v" * 64
+        get_profile_email.return_value = "user@gmail.com"
+        exchange_code.side_effect = GmailOAuthExchangeError
+
+        with self.assertRaises(GmailOAuthExchangeError):
+            complete_gmail_connection("code", "state")
+
+        get_gmail_address.assert_not_called()
+        upsert_account.assert_not_called()
+
+    @patch("app.gmail_oauth.upsert_gmail_account_credentials")
+    @patch("app.gmail_oauth.get_gmail_address")
+    @patch("app.gmail_oauth.exchange_gmail_authorization_code")
+    @patch("app.gmail_oauth.get_profile_email")
+    @patch("app.gmail_oauth.parse_gmail_oauth_state")
+    def test_gmail_profile_failure_writes_nothing(
+        self,
+        parse_state,
+        get_profile_email,
+        exchange_code,
+        get_gmail_address,
+        upsert_account,
+    ):
+        parse_state.return_value.profile_id = self.profile_id
+        parse_state.return_value.code_verifier = "v" * 64
+        get_profile_email.return_value = "user@gmail.com"
+        exchange_code.return_value = self.make_credentials()
+        get_gmail_address.side_effect = GmailProfileError
+
+        with self.assertRaises(GmailProfileError):
+            complete_gmail_connection("code", "state")
+
+        upsert_account.assert_not_called()
+
 
 class GmailAccountPersistenceTests(unittest.TestCase):
     def make_database_mocks(self, fetch_results):
@@ -294,6 +344,10 @@ class GmailAccountPersistenceTests(unittest.TestCase):
         self.assertEqual(result, account_id)
         upsert_parameters = cursor.execute.call_args_list[1].args[1]
         self.assertEqual(upsert_parameters[3], "existing-encrypted-refresh")
+        upsert_sql = cursor.execute.call_args_list[1].args[0].lower()
+        self.assertNotIn("last_history_id", upsert_sql)
+        self.assertNotIn("last_synced_at", upsert_sql)
+        self.assertNotIn("delete", upsert_sql)
 
 
 class GmailCallbackRouteTests(unittest.TestCase):
@@ -322,6 +376,17 @@ class GmailCallbackRouteTests(unittest.TestCase):
             response.headers["location"],
             "http://localhost:3000/?gmail_error=invalid_state",
         )
+
+    @patch("app.main.complete_gmail_connection")
+    def test_missing_code_does_not_start_connection(self, complete_connection):
+        response = self.callback("?state=test-state")
+
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "http://localhost:3000/?gmail_error=connection_failed",
+        )
+        complete_connection.assert_not_called()
 
     @patch("app.main.complete_gmail_connection")
     def test_denied_consent_does_not_exchange_code(self, complete_connection):
@@ -361,6 +426,51 @@ class GmailCallbackRouteTests(unittest.TestCase):
         )
         self.assertNotIn("secret-code", response.headers["location"])
         self.assertNotIn("secret-state", response.headers["location"])
+
+    @patch("app.main.complete_gmail_connection")
+    def test_expected_failure_does_not_log_provider_details(
+        self,
+        complete_connection,
+    ):
+        complete_connection.side_effect = GmailOAuthExchangeError(
+            "provider-secret-detail"
+        )
+
+        with self.assertLogs("app.main", level="WARNING") as captured_logs:
+            response = self.callback(
+                "?code=secret-code&state=secret-state"
+            )
+
+        rendered_logs = " ".join(captured_logs.output)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "http://localhost:3000/?gmail_error=connection_failed",
+        )
+        self.assertNotIn("provider-secret-detail", rendered_logs)
+        self.assertNotIn("secret-code", rendered_logs)
+        self.assertNotIn("secret-state", rendered_logs)
+
+    @patch("app.main.complete_gmail_connection")
+    def test_unexpected_failure_is_sanitized(self, complete_connection):
+        complete_connection.side_effect = RuntimeError(
+            "unexpected-provider-secret"
+        )
+
+        with self.assertLogs("app.main", level="ERROR") as captured_logs:
+            response = self.callback(
+                "?code=secret-code&state=secret-state"
+            )
+
+        rendered_logs = " ".join(captured_logs.output)
+        self.assertEqual(response.status_code, 303)
+        self.assertEqual(
+            response.headers["location"],
+            "http://localhost:3000/?gmail_error=connection_failed",
+        )
+        self.assertNotIn("unexpected-provider-secret", rendered_logs)
+        self.assertNotIn("secret-code", rendered_logs)
+        self.assertNotIn("secret-state", rendered_logs)
 
 
 if __name__ == "__main__":
