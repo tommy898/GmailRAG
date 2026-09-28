@@ -29,6 +29,7 @@ from app.token_crypto import decrypt_token, encrypt_token
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 EXCLUDED_GMAIL_LABEL_IDS = frozenset({"SPAM", "TRASH"})
+GMAIL_API_NUM_RETRIES = 3
 
 
 class GmailProfileError(Exception):
@@ -279,7 +280,7 @@ def iter_gmail_message_ids(
                 service.users()
                 .messages()
                 .list(**request_parameters)
-                .execute()
+                .execute(num_retries=GMAIL_API_NUM_RETRIES)
             )
         except HttpError as exc:
             raise GmailApiError("Gmail message listing failed") from exc
@@ -331,7 +332,7 @@ def get_gmail_message(service, message_id: str) -> dict[str, Any]:
                 id=message_id,
                 format="full",
             )
-            .execute()
+            .execute(num_retries=GMAIL_API_NUM_RETRIES)
         )
     except HttpError as exc:
         raise GmailApiError("Gmail message download failed") from exc
@@ -344,7 +345,11 @@ def get_gmail_message(service, message_id: str) -> dict[str, Any]:
 
 def get_current_gmail_history_id(service) -> str:
     try:
-        profile = service.users().getProfile(userId="me").execute()
+        profile = (
+            service.users()
+            .getProfile(userId="me")
+            .execute(num_retries=GMAIL_API_NUM_RETRIES)
+        )
     except HttpError as exc:
         raise GmailApiError("Gmail profile could not be loaded") from exc
 
@@ -397,6 +402,7 @@ def list_gmail_history_changes(
         raise ValueError("start_history_id cannot be empty")
 
     message_actions: dict[str, str] = {}
+    predelete_message_ids: dict[str, None] = {}
     next_history_id = None
     page_token = None
     seen_page_tokens = set()
@@ -416,7 +422,7 @@ def list_gmail_history_changes(
                 service.users()
                 .history()
                 .list(**request_parameters)
-                .execute()
+                .execute(num_retries=GMAIL_API_NUM_RETRIES)
             )
         except HttpError as exc:
             if getattr(exc.resp, "status", None) == 404:
@@ -480,9 +486,9 @@ def list_gmail_history_changes(
                     get_history_change_label_ids(change)
                     & EXCLUDED_GMAIL_LABEL_IDS
                 ):
-                    message_actions[
-                        get_history_message_id(change)
-                    ] = "upsert"
+                    message_id = get_history_message_id(change)
+                    predelete_message_ids[message_id] = None
+                    message_actions[message_id] = "upsert"
 
         response_history_id = response.get("historyId")
 
@@ -512,9 +518,14 @@ def list_gmail_history_changes(
             if action == "upsert"
         ),
         deleted_message_ids=tuple(
-            message_id
-            for message_id, action in message_actions.items()
-            if action == "delete"
+            dict.fromkeys(
+                [
+                    message_id
+                    for message_id, action in message_actions.items()
+                    if action == "delete"
+                ]
+                + list(predelete_message_ids)
+            )
         ),
         next_history_id=next_history_id,
     )
@@ -720,7 +731,18 @@ def iter_normalized_messages_by_id(
     message_ids: Iterator[str],
 ) -> Iterator[dict[str, object]]:
     for message_id in message_ids:
-        yield normalize_gmail_message(get_gmail_message(service, message_id))
+        message = get_gmail_message(service, message_id)
+        label_ids = message.get("labelIds", [])
+
+        if not isinstance(label_ids, list):
+            raise GmailApiError("Gmail message contained invalid labels")
+
+        if frozenset(str(label_id) for label_id in label_ids) & (
+            EXCLUDED_GMAIL_LABEL_IDS
+        ):
+            continue
+
+        yield normalize_gmail_message(message)
 
 
 def prepare_full_gmail_sync(
@@ -832,7 +854,11 @@ def iter_normalized_gmail_messages(
 
 def get_gmail_address(credentials: Credentials) -> str:
     service = build_gmail_api_service(credentials)
-    profile = service.users().getProfile(userId="me").execute()
+    profile = (
+        service.users()
+        .getProfile(userId="me")
+        .execute(num_retries=GMAIL_API_NUM_RETRIES)
+    )
     gmail_address = profile.get("emailAddress")
 
     if not gmail_address:

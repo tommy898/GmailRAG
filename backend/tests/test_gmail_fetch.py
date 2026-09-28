@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, call, patch
 from googleapiclient.errors import HttpError
 
 from app.gmail_service import (
+    GMAIL_API_NUM_RETRIES,
     GmailApiError,
     get_gmail_message,
     iter_gmail_message_ids,
@@ -48,6 +49,10 @@ class GmailMessageListingTests(unittest.TestCase):
                     pageToken="page-2",
                 ),
             ],
+        )
+        self.assertEqual(self.list_request.execute.call_count, 2)
+        self.list_request.execute.assert_called_with(
+            num_retries=GMAIL_API_NUM_RETRIES
         )
 
     def test_message_cap_changes_page_size_and_stops_listing(self):
@@ -155,6 +160,9 @@ class GmailMessageDownloadTests(unittest.TestCase):
             userId="me",
             id="message-1",
             format="full",
+        )
+        self.get_request.execute.assert_called_once_with(
+            num_retries=GMAIL_API_NUM_RETRIES
         )
 
     def test_invalid_download_is_rejected(self):

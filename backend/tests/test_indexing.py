@@ -7,6 +7,7 @@ from app.indexing import (
     embed_and_store_chunks,
     index_email,
     replace_email_chunks,
+    upsert_embedding,
 )
 
 
@@ -125,6 +126,28 @@ class IndexingTests(unittest.TestCase):
 
         self.assertEqual(chunk_count, 1)
         embed_and_store_chunks.assert_not_called()
+
+    @patch("app.indexing.embedding_to_pgvector")
+    def test_embedding_retry_updates_instead_of_duplicating(
+        self,
+        embedding_to_pgvector,
+    ):
+        embedding_id = uuid.uuid4()
+        chunk_id = uuid.uuid4()
+        embedding = [0.0] * 384
+        embedding_to_pgvector.return_value = "[vector]"
+        self.cursor.fetchone.return_value = (embedding_id,)
+
+        result = upsert_embedding(self.connection, chunk_id, embedding)
+
+        self.assertEqual(result, embedding_id)
+        sql, parameters = self.cursor.execute.call_args.args
+        normalized_sql = " ".join(sql.split())
+        self.assertIn(
+            "on conflict (chunk_id, embedding_model) do update",
+            normalized_sql,
+        )
+        self.assertEqual(parameters[0], chunk_id)
 
 
 if __name__ == "__main__":

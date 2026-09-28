@@ -137,6 +137,9 @@ def run_next_gmail_sync_job(
             max_messages=max_messages,
         )
 
+        for message_id in sync_plan.deleted_message_ids:
+            delete_gmail_message(job.gmail_account_id, message_id)
+
         for email in sync_plan.messages:
             processed = process_gmail_message(
                 job.gmail_account_id,
@@ -145,9 +148,6 @@ def run_next_gmail_sync_job(
             messages_processed += 1
             chunks_indexed += processed.chunk_count
             processed_message_ids.append(str(email["gmail_message_id"]))
-
-        for message_id in sync_plan.deleted_message_ids:
-            delete_gmail_message(job.gmail_account_id, message_id)
 
         if sync_plan.mode == "full" and max_messages is None:
             reconcile_full_gmail_sync(

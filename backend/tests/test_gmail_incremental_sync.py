@@ -5,9 +5,12 @@ from unittest.mock import MagicMock, call, patch
 from googleapiclient.errors import HttpError
 
 from app.gmail_service import (
+    GMAIL_API_NUM_RETRIES,
+    GmailApiError,
     GmailHistoryChanges,
     GmailHistoryExpiredError,
     GmailSyncPlan,
+    iter_normalized_messages_by_id,
     list_gmail_history_changes,
     prepare_full_gmail_sync,
     prepare_gmail_sync,
@@ -76,6 +79,10 @@ class GmailHistoryListingTests(unittest.TestCase):
                 ),
             ],
         )
+        self.assertEqual(self.list_request.execute.call_count, 2)
+        self.list_request.execute.assert_called_with(
+            num_retries=GMAIL_API_NUM_RETRIES
+        )
 
     def test_no_changes_still_returns_new_checkpoint(self):
         self.list_request.execute.return_value = {"historyId": "101"}
@@ -108,6 +115,13 @@ class GmailHistoryListingTests(unittest.TestCase):
                         {
                             "message": {"id": "restored"},
                             "labelIds": ["TRASH"],
+                        },
+                        {
+                            "message": {
+                                "id": "restored-but-still-spam",
+                                "labelIds": ["SPAM"],
+                            },
+                            "labelIds": ["TRASH"],
                         }
                     ],
                 }
@@ -117,11 +131,58 @@ class GmailHistoryListingTests(unittest.TestCase):
 
         changes = list_gmail_history_changes(self.service, "100")
 
-        self.assertEqual(changes.upsert_message_ids, ("restored",))
+        self.assertEqual(
+            changes.upsert_message_ids,
+            ("restored", "restored-but-still-spam"),
+        )
         self.assertEqual(
             changes.deleted_message_ids,
-            ("new-spam", "moved-to-trash"),
+            (
+                "new-spam",
+                "moved-to-trash",
+                "restored",
+                "restored-but-still-spam",
+            ),
         )
+
+    def test_repeated_history_page_token_is_rejected(self):
+        self.list_request.execute.side_effect = [
+            {"historyId": "150", "nextPageToken": "same-page"},
+            {"historyId": "200", "nextPageToken": "same-page"},
+        ]
+
+        with self.assertRaises(GmailApiError):
+            list_gmail_history_changes(self.service, "100")
+
+    def test_non_expiration_provider_error_is_sanitized(self):
+        response = MagicMock(status=500, reason="provider-secret-detail")
+        self.list_request.execute.side_effect = HttpError(
+            response,
+            b"provider-secret-body",
+        )
+
+        with self.assertRaises(GmailApiError) as captured:
+            list_gmail_history_changes(self.service, "100")
+
+        self.assertEqual(str(captured.exception), "Gmail history listing failed")
+        self.assertNotIn("provider-secret", str(captured.exception))
+
+    def test_malformed_history_message_is_rejected_without_raw_data(self):
+        self.list_request.execute.return_value = {
+            "history": [
+                {
+                    "messagesAdded": [
+                        {"message": {"threadId": "private-thread"}}
+                    ]
+                }
+            ],
+            "historyId": "200",
+        }
+
+        with self.assertRaises(GmailApiError) as captured:
+            list_gmail_history_changes(self.service, "100")
+
+        self.assertNotIn("private-thread", str(captured.exception))
 
     def test_expired_checkpoint_has_a_distinct_safe_error(self):
         response = MagicMock(status=404, reason="provider-secret-detail")
@@ -137,6 +198,37 @@ class GmailHistoryListingTests(unittest.TestCase):
 
 
 class GmailSyncPlanningTests(unittest.TestCase):
+    @patch("app.gmail_service.get_gmail_message")
+    def test_full_message_labels_prevent_spam_or_trash_reindexing(
+        self,
+        get_message,
+    ):
+        service = MagicMock()
+        get_message.side_effect = [
+            {
+                "id": "still-spam",
+                "labelIds": ["SPAM"],
+                "payload": {},
+            },
+            {
+                "id": "restored",
+                "labelIds": ["INBOX"],
+                "payload": {},
+            },
+        ]
+
+        messages = list(
+            iter_normalized_messages_by_id(
+                service,
+                iter(["still-spam", "restored"]),
+            )
+        )
+
+        self.assertEqual(
+            [message["gmail_message_id"] for message in messages],
+            ["restored"],
+        )
+
     @patch("app.gmail_service.iter_gmail_message_ids")
     @patch("app.gmail_service.get_current_gmail_history_id")
     def test_full_sync_captures_checkpoint_before_streaming_messages(

@@ -100,6 +100,35 @@ class GmailSyncJobPersistenceTests(unittest.TestCase):
         )
 
     @patch("app.sync_jobs.get_connection")
+    def test_failed_job_does_not_block_a_new_retry(self, get_connection):
+        retry_job_id = uuid.uuid4()
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.side_effect = [
+            (self.gmail_account_id,),
+            None,
+            (retry_job_id, "pending"),
+        ]
+
+        result = enqueue_gmail_sync_job(self.profile_id)
+
+        self.assertEqual(
+            result,
+            EnqueuedGmailSyncJob(
+                job_id=retry_job_id,
+                status="pending",
+                created=True,
+            ),
+        )
+        active_job_sql = " ".join(
+            self.cursor.execute.call_args_list[1].args[0].split()
+        )
+        self.assertIn(
+            "status in ('pending', 'running')",
+            active_job_sql,
+        )
+        self.assertNotIn("status = 'failed'", active_job_sql)
+
+    @patch("app.sync_jobs.get_connection")
     def test_rejects_profile_without_connected_gmail(self, get_connection):
         get_connection.return_value = self.connection_context
         self.cursor.fetchone.return_value = None

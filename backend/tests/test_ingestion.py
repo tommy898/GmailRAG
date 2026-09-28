@@ -37,6 +37,10 @@ class EmailIngestionTests(unittest.TestCase):
         sql, parameters = cursor.execute.call_args.args
         normalized_sql = " ".join(sql.split())
         self.assertIn("sent_at", normalized_sql)
+        self.assertIn(
+            "on conflict (gmail_account_id, gmail_message_id) do update",
+            normalized_sql,
+        )
         self.assertIn("sent_at = excluded.sent_at", normalized_sql)
         self.assertEqual(
             parameters,

@@ -229,6 +229,10 @@ class GmailCredentialServiceTests(unittest.TestCase):
         self.assertEqual(credentials.token, "refreshed-access-token")
         arguments = update_credentials.call_args.kwargs
         self.assertEqual(arguments["gmail_account_id"], self.account_id)
+        self.assertNotEqual(
+            arguments["access_token_encrypted"],
+            "refreshed-access-token",
+        )
         self.assertEqual(
             token_crypto.decrypt_token(arguments["access_token_encrypted"]),
             "refreshed-access-token",
@@ -263,6 +267,10 @@ class GmailCredentialServiceTests(unittest.TestCase):
             get_authorized_gmail_credentials(self.account_id)
 
         arguments = update_credentials.call_args.kwargs
+        self.assertNotEqual(
+            arguments["refresh_token_encrypted"],
+            "rotated-refresh-token",
+        )
         self.assertEqual(
             token_crypto.decrypt_token(arguments["refresh_token_encrypted"]),
             "rotated-refresh-token",

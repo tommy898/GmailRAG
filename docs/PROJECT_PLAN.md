@@ -489,7 +489,13 @@ the first uncapped job performs a full mailbox import and saves last_history_id 
 later jobs use Gmail history to upsert added/restored messages and delete removed, spam, or trashed messages
 an expired Gmail history checkpoint automatically falls back to a reconciled full mailbox import
 failed and capped diagnostic runs do not advance the checkpoint, so unprocessed changes cannot be skipped
-109 backend tests pass across authentication, OAuth, indexing, Gmail processing, job execution, and status reporting
+8.10 synchronization security and reliability hardening complete
+Gmail list, download, profile, and history requests use three transient-failure retries with exponential backoff
+message and history pagination reject repeated tokens instead of looping forever
+malformed messages fail safely without advancing last_history_id, allowing an idempotent retry
+email upserts, chunk replacement, and embedding upserts prevent duplicate derived data on retry
+account-scoped deletes, active-job reuse, encrypted refreshed tokens, and sanitized failures have regression coverage
+117 backend tests pass across authentication, OAuth, indexing, Gmail synchronization, retries, isolation, and status reporting
 ```
 
 Build:
