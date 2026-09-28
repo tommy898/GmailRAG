@@ -117,15 +117,6 @@ answers
 answer_sources
 ```
 
-Migration from local demo:
-
-```text
-SQLite emails table       -> Postgres emails
-SQLite email_chunks table -> Postgres email_chunks
-Chroma collection         -> pgvector email_embeddings
-terminal input/output     -> FastAPI endpoint + Next.js UI
-```
-
 ## Build Order
 
 ### Milestone 1: FastAPI Backend Skeleton
@@ -178,6 +169,7 @@ Build:
 backend/app/chunking.py
 backend/app/embeddings.py
 backend/app/ingestion.py
+backend/app/indexing.py
 scripts/migrate_sqlite_to_supabase.py
 ```
 
@@ -437,19 +429,34 @@ reconnection preserved the original gmail_accounts row and all indexed data
 
 Goal: replace the one-time SQLite migration with real web Gmail sync and indexing.
 
-This milestone uses the Gmail account created by Milestone 7. The worker is the part that loops over many emails and calls the shared production ingestion pipeline.
+This milestone uses the Gmail account created by Milestone 7. The worker loops over many emails and coordinates the separate ingestion and indexing layers.
 
-Indexing flow cleanup note:
+Indexing flow boundary:
 
-Before connecting the background worker, clean up the current indexing boundary. `replace_chunks_and_embeddings_for_email()` currently coordinates chunking, chunk persistence, embedding generation, and embedding persistence in one function. Preserve `chunking.py` as the pure text-processing layer and `embeddings.py` as the pure vector-generation layer, while splitting the database and orchestration work into clearer operations such as:
+Keep each module focused on one stage:
 
 ```text
-replace_email_chunks()
-embed_and_store_chunks()
-index_email()
+gmail_service.py fetches and normalizes Gmail messages
+ingestion.py validates and stores normalized email rows
+chunking.py performs pure text processing
+embeddings.py performs pure vector generation
+indexing.py stores chunks and embeddings and exposes index_email()
+worker.py coordinates ingestion and indexing for each message
 ```
 
-The worker should call the high-level indexing operation rather than reproduce chunking, embedding, or database logic.
+Retrieval, reranking, and generation remain separate query-time stages used by `/ask`; they are not part of ingestion or background indexing.
+
+Progress:
+
+```text
+8.1 indexing boundary cleanup complete
+ingestion.py now contains only normalized email validation and persistence
+indexing.py owns chunk and embedding persistence
+replace_email_chunks() replaces all old chunker versions for one email
+embed_and_store_chunks() generates and persists vectors for stored chunks
+index_email() is the shared high-level operation for the future worker
+38 backend tests pass, including indexing boundary coverage
+```
 
 Build:
 
@@ -477,10 +484,8 @@ poll pending sync_jobs
 load stored Gmail account credentials
 fetch Gmail messages
 normalize email records
-call ingestion.py for each email
-chunk email text
-embed chunks
-store vectors in pgvector
+call ingestion.upsert_email() for each email
+call indexing.index_email() for the stored email
 mark jobs done or failed
 record error messages
 ```
@@ -490,7 +495,7 @@ Completion criteria:
 ```text
 POST /gmail/sync creates a job
 worker processes the job
-worker calls the shared ingestion functions
+worker uses the shared ingestion and indexing functions
 GET /sync/status reports progress
 failed jobs store readable errors
 ```

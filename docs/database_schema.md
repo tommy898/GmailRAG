@@ -441,9 +441,9 @@ For v1, HNSW is usually a good default if Supabase supports it in the project se
 | SQLite `email_chunks` | Postgres `email_chunks` |
 | Chroma `email_chunks` collection | Postgres `email_embeddings` with pgvector |
 | `src/ingest_1000_emails.py` | `gmail_service.py` + worker job |
-| `src/chunk.py` | `chunking.py` + worker job |
-| `src/embed.py` | `embeddings.py` + worker job |
-| `src/retrieve_rerank.py` | `retrieval.py` + `reranking.py` |
+| `src/chunk.py` | `chunking.py` + `indexing.py` + worker job |
+| `src/embed.py` | `embeddings.py` + `indexing.py` + worker job |
+| `src/retrieve_rerank.py` | `retrieval.py` + `rerank.py` |
 | `src/ask.py` | FastAPI `POST /ask` endpoint |
 
 ## Open Questions
@@ -467,4 +467,3 @@ supabase/schema.sql
 ```
 
 or Supabase migration files.
-
