@@ -61,3 +61,40 @@ def upsert_email(
         )
 
         return cursor.fetchone()[0]
+
+
+def delete_email(
+    conn,
+    gmail_account_id: uuid.UUID,
+    gmail_message_id: str,
+) -> bool:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            delete from emails
+            where gmail_account_id = %s
+              and gmail_message_id = %s
+            returning id
+            """,
+            (gmail_account_id, gmail_message_id),
+        )
+
+        return cursor.fetchone() is not None
+
+
+def delete_emails_missing_from_full_sync(
+    conn,
+    gmail_account_id: uuid.UUID,
+    gmail_message_ids: list[str],
+) -> int:
+    with conn.cursor() as cursor:
+        cursor.execute(
+            """
+            delete from emails
+            where gmail_account_id = %s
+              and not (gmail_message_id = any(%s::text[]))
+            """,
+            (gmail_account_id, gmail_message_ids),
+        )
+
+        return cursor.rowcount

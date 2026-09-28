@@ -161,6 +161,30 @@ class GmailSyncJobLifecycleTests(unittest.TestCase):
         self.assertEqual(account_parameters, (self.gmail_account_id,))
 
     @patch("app.sync_jobs.get_connection")
+    def test_completion_saves_new_history_checkpoint(self, get_connection):
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.return_value = (self.job_id,)
+
+        complete_gmail_sync_job(
+            self.job_id,
+            self.gmail_account_id,
+            "history-200",
+        )
+
+        account_sql, account_parameters = self.cursor.execute.call_args_list[
+            1
+        ].args
+        normalized_account_sql = " ".join(account_sql.split())
+        self.assertIn(
+            "last_history_id = coalesce(%s, last_history_id)",
+            normalized_account_sql,
+        )
+        self.assertEqual(
+            account_parameters,
+            ("history-200", self.gmail_account_id),
+        )
+
+    @patch("app.sync_jobs.get_connection")
     def test_completion_marks_job_done_and_account_ready(self, get_connection):
         get_connection.return_value = self.connection_context
         self.cursor.fetchone.return_value = (self.job_id,)
@@ -181,7 +205,10 @@ class GmailSyncJobLifecycleTests(unittest.TestCase):
         normalized_account_sql = " ".join(account_sql.split())
         self.assertIn("sync_status = 'ready'", normalized_account_sql)
         self.assertIn("last_synced_at = now()", normalized_account_sql)
-        self.assertEqual(account_parameters, (self.gmail_account_id,))
+        self.assertEqual(
+            account_parameters,
+            (None, self.gmail_account_id),
+        )
 
     @patch("app.sync_jobs.get_connection")
     def test_failure_stores_bounded_error_and_marks_account_failed(

@@ -32,6 +32,28 @@ class StoredGmailCredentials:
     scope: str
 
 
+def get_gmail_sync_checkpoint(
+    gmail_account_id: uuid.UUID,
+) -> str | None:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select last_history_id
+                from gmail_accounts
+                where id = %s
+                """,
+                (gmail_account_id,),
+            )
+            row = cursor.fetchone()
+
+    if row is None:
+        raise GmailAccountNotFoundError("Gmail account does not exist")
+
+    history_id = row[0]
+    return str(history_id) if history_id is not None else None
+
+
 def get_profile_email(profile_id: uuid.UUID) -> str:
     with get_connection() as conn:
         with conn.cursor() as cursor:

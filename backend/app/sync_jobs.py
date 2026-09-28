@@ -252,6 +252,7 @@ def claim_next_gmail_sync_job() -> ClaimedGmailSyncJob | None:
 def complete_gmail_sync_job(
     job_id: uuid.UUID,
     gmail_account_id: uuid.UUID,
+    last_history_id: str | None = None,
 ) -> None:
     with get_connection() as conn:
         with conn.cursor() as cursor:
@@ -282,11 +283,12 @@ def complete_gmail_sync_job(
                 update gmail_accounts
                 set
                     sync_status = 'ready',
+                    last_history_id = coalesce(%s, last_history_id),
                     last_synced_at = now(),
                     updated_at = now()
                 where id = %s
                 """,
-                (gmail_account_id,),
+                (last_history_id, gmail_account_id),
             )
 
 

@@ -12,6 +12,7 @@ from app.gmail_accounts import (
     GmailAccountNotFoundError,
     IncompleteGmailCredentialsError,
     StoredGmailCredentials,
+    get_gmail_sync_checkpoint,
     get_stored_gmail_credentials,
     update_gmail_credentials_after_refresh,
 )
@@ -32,6 +33,17 @@ class GmailCredentialPersistenceTests(unittest.TestCase):
         connection.cursor.return_value.__enter__.return_value = cursor
         cursor.fetchone.return_value = fetch_result
         return connection, cursor
+
+    @patch("app.gmail_accounts.get_connection")
+    def test_loads_saved_history_checkpoint(self, get_connection):
+        account_id = uuid.uuid4()
+        connection, cursor = self.make_database_mocks(("history-100",))
+        get_connection.return_value = connection
+
+        checkpoint = get_gmail_sync_checkpoint(account_id)
+
+        self.assertEqual(checkpoint, "history-100")
+        self.assertEqual(cursor.execute.call_args.args[1], (account_id,))
 
     @patch("app.gmail_accounts.get_connection")
     def test_loads_credentials_for_exact_account_id(self, get_connection):

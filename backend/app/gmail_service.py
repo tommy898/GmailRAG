@@ -4,6 +4,7 @@ import os
 import re
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.header import decode_header, make_header
 from email.utils import parsedate_to_datetime
@@ -27,6 +28,7 @@ from app.token_crypto import decrypt_token, encrypt_token
 
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
+EXCLUDED_GMAIL_LABEL_IDS = frozenset({"SPAM", "TRASH"})
 
 
 class GmailProfileError(Exception):
@@ -45,8 +47,27 @@ class GmailApiError(Exception):
     pass
 
 
+class GmailHistoryExpiredError(GmailApiError):
+    pass
+
+
 class GmailMessageNormalizationError(Exception):
     pass
+
+
+@dataclass(frozen=True)
+class GmailHistoryChanges:
+    upsert_message_ids: tuple[str, ...]
+    deleted_message_ids: tuple[str, ...]
+    next_history_id: str
+
+
+@dataclass(frozen=True)
+class GmailSyncPlan:
+    mode: str
+    messages: Iterator[dict[str, object]]
+    deleted_message_ids: tuple[str, ...]
+    next_history_id: str | None
 
 
 HTML_BLOCK_TAGS = {
@@ -321,6 +342,184 @@ def get_gmail_message(service, message_id: str) -> dict[str, Any]:
     return message
 
 
+def get_current_gmail_history_id(service) -> str:
+    try:
+        profile = service.users().getProfile(userId="me").execute()
+    except HttpError as exc:
+        raise GmailApiError("Gmail profile could not be loaded") from exc
+
+    history_id = profile.get("historyId") if isinstance(profile, dict) else None
+
+    if not history_id:
+        raise GmailApiError("Gmail profile did not include a history ID")
+
+    return str(history_id)
+
+
+def get_history_message(change: object) -> dict[str, Any]:
+    message = change.get("message") if isinstance(change, dict) else None
+
+    if not isinstance(message, dict) or not message.get("id"):
+        raise GmailApiError("Gmail history contained an invalid message")
+
+    return message
+
+
+def get_history_message_id(change: object) -> str:
+    return str(get_history_message(change)["id"])
+
+
+def get_history_change_label_ids(change: object) -> frozenset[str]:
+    label_ids = change.get("labelIds", []) if isinstance(change, dict) else []
+
+    if not isinstance(label_ids, list):
+        raise GmailApiError("Gmail history contained invalid labels")
+
+    return frozenset(str(label_id) for label_id in label_ids)
+
+
+def get_history_message_label_ids(change: object) -> frozenset[str]:
+    label_ids = get_history_message(change).get("labelIds", [])
+
+    if not isinstance(label_ids, list):
+        raise GmailApiError("Gmail history message contained invalid labels")
+
+    return frozenset(str(label_id) for label_id in label_ids)
+
+
+def list_gmail_history_changes(
+    service,
+    start_history_id: str,
+) -> GmailHistoryChanges:
+    normalized_history_id = str(start_history_id or "").strip()
+
+    if not normalized_history_id:
+        raise ValueError("start_history_id cannot be empty")
+
+    message_actions: dict[str, str] = {}
+    next_history_id = None
+    page_token = None
+    seen_page_tokens = set()
+
+    while True:
+        request_parameters: dict[str, Any] = {
+            "userId": "me",
+            "startHistoryId": normalized_history_id,
+            "maxResults": 500,
+        }
+
+        if page_token:
+            request_parameters["pageToken"] = page_token
+
+        try:
+            response = (
+                service.users()
+                .history()
+                .list(**request_parameters)
+                .execute()
+            )
+        except HttpError as exc:
+            if getattr(exc.resp, "status", None) == 404:
+                raise GmailHistoryExpiredError(
+                    "Gmail history checkpoint is no longer available"
+                ) from exc
+
+            raise GmailApiError("Gmail history listing failed") from exc
+
+        if not isinstance(response, dict):
+            raise GmailApiError("Gmail returned an invalid history response")
+
+        history_records = response.get("history", [])
+
+        if not isinstance(history_records, list):
+            raise GmailApiError("Gmail returned an invalid history list")
+
+        for history_record in history_records:
+            if not isinstance(history_record, dict):
+                raise GmailApiError("Gmail returned an invalid history record")
+
+            messages_added = history_record.get("messagesAdded", [])
+            messages_deleted = history_record.get("messagesDeleted", [])
+            labels_added = history_record.get("labelsAdded", [])
+            labels_removed = history_record.get("labelsRemoved", [])
+
+            if not isinstance(messages_added, list) or not isinstance(
+                messages_deleted,
+                list,
+            ) or not isinstance(labels_added, list) or not isinstance(
+                labels_removed,
+                list,
+            ):
+                raise GmailApiError(
+                    "Gmail returned invalid message history changes"
+                )
+
+            for change in messages_added:
+                action = (
+                    "delete"
+                    if get_history_message_label_ids(change)
+                    & EXCLUDED_GMAIL_LABEL_IDS
+                    else "upsert"
+                )
+                message_actions[get_history_message_id(change)] = action
+
+            for change in messages_deleted:
+                message_actions[get_history_message_id(change)] = "delete"
+
+            for change in labels_added:
+                if (
+                    get_history_change_label_ids(change)
+                    & EXCLUDED_GMAIL_LABEL_IDS
+                ):
+                    message_actions[
+                        get_history_message_id(change)
+                    ] = "delete"
+
+            for change in labels_removed:
+                if (
+                    get_history_change_label_ids(change)
+                    & EXCLUDED_GMAIL_LABEL_IDS
+                ):
+                    message_actions[
+                        get_history_message_id(change)
+                    ] = "upsert"
+
+        response_history_id = response.get("historyId")
+
+        if response_history_id:
+            next_history_id = str(response_history_id)
+
+        next_page_token = response.get("nextPageToken")
+
+        if not next_page_token:
+            break
+
+        next_page_token = str(next_page_token)
+
+        if next_page_token in seen_page_tokens:
+            raise GmailApiError("Gmail repeated a history pagination token")
+
+        seen_page_tokens.add(next_page_token)
+        page_token = next_page_token
+
+    if not next_history_id:
+        raise GmailApiError("Gmail history response omitted its checkpoint")
+
+    return GmailHistoryChanges(
+        upsert_message_ids=tuple(
+            message_id
+            for message_id, action in message_actions.items()
+            if action == "upsert"
+        ),
+        deleted_message_ids=tuple(
+            message_id
+            for message_id, action in message_actions.items()
+            if action == "delete"
+        ),
+        next_history_id=next_history_id,
+    )
+
+
 def decode_gmail_body_data(data: str) -> str:
     if not isinstance(data, str) or not data:
         return ""
@@ -514,6 +713,86 @@ def normalize_gmail_message(message: dict[str, Any]) -> dict[str, object]:
         "snippet": str(message.get("snippet") or "").strip(),
         "body_text": extract_gmail_body_text(payload),
     }
+
+
+def iter_normalized_messages_by_id(
+    service,
+    message_ids: Iterator[str],
+) -> Iterator[dict[str, object]]:
+    for message_id in message_ids:
+        yield normalize_gmail_message(get_gmail_message(service, message_id))
+
+
+def prepare_full_gmail_sync(
+    service,
+    *,
+    max_messages: int | None = None,
+) -> GmailSyncPlan:
+    checkpoint = get_current_gmail_history_id(service)
+    message_ids = iter_gmail_message_ids(
+        service,
+        max_messages=max_messages,
+    )
+
+    return GmailSyncPlan(
+        mode="full",
+        messages=iter_normalized_messages_by_id(service, message_ids),
+        deleted_message_ids=(),
+        next_history_id=checkpoint if max_messages is None else None,
+    )
+
+
+def prepare_incremental_gmail_sync(
+    service,
+    start_history_id: str,
+    *,
+    max_messages: int | None = None,
+) -> GmailSyncPlan:
+    changes = list_gmail_history_changes(service, start_history_id)
+    upsert_message_ids = changes.upsert_message_ids
+
+    if max_messages is not None:
+        if max_messages < 0:
+            raise ValueError("max_messages cannot be negative")
+
+        upsert_message_ids = upsert_message_ids[:max_messages]
+
+    return GmailSyncPlan(
+        mode="incremental",
+        messages=iter_normalized_messages_by_id(
+            service,
+            iter(upsert_message_ids),
+        ),
+        deleted_message_ids=changes.deleted_message_ids,
+        next_history_id=(
+            changes.next_history_id if max_messages is None else None
+        ),
+    )
+
+
+def prepare_gmail_sync(
+    gmail_account_id: uuid.UUID,
+    last_history_id: str | None,
+    *,
+    max_messages: int | None = None,
+) -> GmailSyncPlan:
+    credentials = get_authorized_gmail_credentials(gmail_account_id)
+    service = build_gmail_api_service(credentials)
+
+    if last_history_id:
+        try:
+            return prepare_incremental_gmail_sync(
+                service,
+                last_history_id,
+                max_messages=max_messages,
+            )
+        except GmailHistoryExpiredError:
+            pass
+
+    return prepare_full_gmail_sync(
+        service,
+        max_messages=max_messages,
+    )
 
 
 def iter_gmail_messages(

@@ -413,6 +413,8 @@ Implementation status:
 7.9  GET /gmail/callback, PKCE, encrypted token upsert, and frontend feedback complete
 7.10 JWT, OAuth, logging, token, and two-account isolation verification complete
 7.11 Environment, callback, test-user, and security documentation complete
+Next.js 16 session-refresh proxy added after Milestone 7 review
+Supabase access-token refresh now updates request and browser cookies
 ```
 
 Status:
@@ -482,7 +484,12 @@ successful jobs mark the account ready while failures store only bounded sanitiz
 GET /sync/status returns only the authenticated profile's connection and latest job state
 unknown database error text is replaced with a safe public message before reaching the browser
 python -m app.worker runs the polling worker and --once processes at most one queued job
-97 backend tests pass across authentication, OAuth, indexing, Gmail processing, job execution, and status reporting
+8.9 initial and incremental Gmail synchronization complete
+the first uncapped job performs a full mailbox import and saves last_history_id only after success
+later jobs use Gmail history to upsert added/restored messages and delete removed, spam, or trashed messages
+an expired Gmail history checkpoint automatically falls back to a reconciled full mailbox import
+failed and capped diagnostic runs do not advance the checkpoint, so unprocessed changes cannot be skipped
+109 backend tests pass across authentication, OAuth, indexing, Gmail processing, job execution, and status reporting
 ```
 
 Build:
@@ -510,9 +517,11 @@ Worker responsibilities:
 poll pending sync_jobs
 load stored Gmail account credentials
 fetch Gmail messages
+choose a full import or Gmail History changes from last_history_id
 normalize email records
 call ingestion.upsert_email() for each email
 call indexing.index_email() for the stored email
+remove deleted, spam, and trashed messages with cascading derived data
 mark jobs done or failed
 record error messages
 ```
@@ -523,6 +532,9 @@ Completion criteria:
 POST /gmail/sync creates a job
 worker processes the job
 worker uses the shared ingestion and indexing functions
+successful full sync stores a Gmail history checkpoint
+later syncs process only Gmail history changes
+expired history safely falls back to full synchronization
 GET /sync/status reports progress
 failed jobs store readable errors
 ```

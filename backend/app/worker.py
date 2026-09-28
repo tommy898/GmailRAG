@@ -12,16 +12,21 @@ from app.db import get_connection
 from app.gmail_accounts import (
     GmailAccountNotFoundError,
     IncompleteGmailCredentialsError,
+    get_gmail_sync_checkpoint,
 )
 from app.gmail_service import (
     GmailApiError,
     GmailCredentialRefreshError,
     GmailMessageNormalizationError,
     InvalidGmailCredentialScopeError,
-    iter_normalized_gmail_messages,
+    prepare_gmail_sync,
 )
 from app.indexing import index_email
-from app.ingestion import upsert_email
+from app.ingestion import (
+    delete_email,
+    delete_emails_missing_from_full_sync,
+    upsert_email,
+)
 from app.sync_jobs import (
     claim_next_gmail_sync_job,
     complete_gmail_sync_job,
@@ -44,6 +49,26 @@ class GmailSyncRunResult:
     status: str
     messages_processed: int
     chunks_indexed: int
+
+
+def delete_gmail_message(
+    gmail_account_id: uuid.UUID,
+    gmail_message_id: str,
+) -> bool:
+    with get_connection() as conn:
+        return delete_email(conn, gmail_account_id, gmail_message_id)
+
+
+def reconcile_full_gmail_sync(
+    gmail_account_id: uuid.UUID,
+    gmail_message_ids: list[str],
+) -> int:
+    with get_connection() as conn:
+        return delete_emails_missing_from_full_sync(
+            conn,
+            gmail_account_id,
+            gmail_message_ids,
+        )
 
 
 def process_gmail_message(
@@ -100,18 +125,35 @@ def run_next_gmail_sync_job(
 
     messages_processed = 0
     chunks_indexed = 0
+    processed_message_ids: list[str] = []
 
     try:
-        for email in iter_normalized_gmail_messages(
+        last_history_id = get_gmail_sync_checkpoint(
             job.gmail_account_id,
+        )
+        sync_plan = prepare_gmail_sync(
+            job.gmail_account_id,
+            last_history_id,
             max_messages=max_messages,
-        ):
+        )
+
+        for email in sync_plan.messages:
             processed = process_gmail_message(
                 job.gmail_account_id,
                 email,
             )
             messages_processed += 1
             chunks_indexed += processed.chunk_count
+            processed_message_ids.append(str(email["gmail_message_id"]))
+
+        for message_id in sync_plan.deleted_message_ids:
+            delete_gmail_message(job.gmail_account_id, message_id)
+
+        if sync_plan.mode == "full" and max_messages is None:
+            reconcile_full_gmail_sync(
+                job.gmail_account_id,
+                processed_message_ids,
+            )
     except Exception as exc:
         error_message = safe_gmail_sync_error_message(exc)
         logger.error(
@@ -131,7 +173,11 @@ def run_next_gmail_sync_job(
             chunks_indexed=chunks_indexed,
         )
 
-    complete_gmail_sync_job(job.job_id, job.gmail_account_id)
+    complete_gmail_sync_job(
+        job.job_id,
+        job.gmail_account_id,
+        sync_plan.next_history_id,
+    )
     return GmailSyncRunResult(
         job_id=job.job_id,
         status="done",
