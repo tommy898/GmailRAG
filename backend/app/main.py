@@ -3,7 +3,7 @@ import uuid
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
@@ -24,7 +24,16 @@ from app.gmail_oauth import (
 )
 from app.gmail_service import GmailProfileError
 from app.rag import answer_question
-from app.schemas import AskRequest, AskResponse, GmailConnectResponse
+from app.schemas import (
+    AskRequest,
+    AskResponse,
+    GmailConnectResponse,
+    GmailSyncResponse,
+)
+from app.sync_jobs import (
+    GmailAccountNotConnectedError,
+    enqueue_gmail_sync_job,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -93,6 +102,32 @@ def connect_gmail(
 ):
     return GmailConnectResponse(
         authorization_url=build_gmail_authorization_url(profile_id)
+    )
+
+
+@app.post(
+    "/gmail/sync",
+    response_model=GmailSyncResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def create_gmail_sync(
+    profile_id: Annotated[
+        uuid.UUID,
+        Depends(get_current_profile_id),
+    ],
+):
+    try:
+        job = enqueue_gmail_sync_job(profile_id)
+    except GmailAccountNotConnectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Connect Gmail before starting a sync",
+        ) from exc
+
+    return GmailSyncResponse(
+        job_id=job.job_id,
+        status=job.status,
+        created=job.created,
     )
 
 

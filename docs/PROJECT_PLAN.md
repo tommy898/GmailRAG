@@ -467,7 +467,18 @@ nested MIME parts are traversed, text/plain is preferred, and HTML is a safe tex
 attachments are excluded and encoded headers are decoded
 Gmail internalDate becomes a timezone-aware sent_at value with the Date header as fallback
 live one-message smoke test confirmed the normalized record shape without printing message content
-69 backend tests pass across authentication, OAuth, indexing, credentials, Gmail fetching, and normalization
+8.5 single-message processing complete
+worker.process_gmail_message() stores and indexes one normalized message in one transaction
+indexing or persistence failures leave the transaction context as an error so partial work is rolled back
+8.6 authenticated Gmail sync enqueue complete
+POST /gmail/sync resolves the connected account from the authenticated profile and returns 202 quickly
+pending or running Gmail sync jobs are reused while a locked account row prevents duplicate concurrent jobs
+unconnected profiles receive a sanitized 409 response and no Gmail or token data is returned
+8.7 single-job worker execution complete
+the oldest pending Gmail job is claimed with row locking and SKIP LOCKED for multi-worker safety
+normalized messages stream through the shared single-message persistence and indexing transaction
+successful jobs mark the account ready while failures store only bounded sanitized errors
+88 backend tests pass across authentication, OAuth, indexing, Gmail processing, and sync job execution
 ```
 
 Build:

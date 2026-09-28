@@ -1,3 +1,5 @@
+import uuid
+
 from pydantic import BaseModel
 
 
@@ -21,3 +23,9 @@ class AskResponse(BaseModel):
 
 class GmailConnectResponse(BaseModel):
     authorization_url: str
+
+
+class GmailSyncResponse(BaseModel):
+    job_id: uuid.UUID
+    status: str
+    created: bool
