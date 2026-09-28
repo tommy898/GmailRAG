@@ -478,7 +478,11 @@ unconnected profiles receive a sanitized 409 response and no Gmail or token data
 the oldest pending Gmail job is claimed with row locking and SKIP LOCKED for multi-worker safety
 normalized messages stream through the shared single-message persistence and indexing transaction
 successful jobs mark the account ready while failures store only bounded sanitized errors
-88 backend tests pass across authentication, OAuth, indexing, Gmail processing, and sync job execution
+8.8 sync status and worker command complete
+GET /sync/status returns only the authenticated profile's connection and latest job state
+unknown database error text is replaced with a safe public message before reaching the browser
+python -m app.worker runs the polling worker and --once processes at most one queued job
+97 backend tests pass across authentication, OAuth, indexing, Gmail processing, job execution, and status reporting
 ```
 
 Build:
@@ -664,6 +668,12 @@ Backend configuration also includes the public project URL and exact OAuth origi
 SUPABASE_URL
 GOOGLE_REDIRECT_URI
 FRONTEND_URL
+```
+
+Optional worker configuration:
+
+```text
+WORKER_POLL_SECONDS defaults to 5 seconds
 ```
 
 The frontend may contain only public configuration:

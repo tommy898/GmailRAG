@@ -28,11 +28,14 @@ from app.schemas import (
     AskRequest,
     AskResponse,
     GmailConnectResponse,
+    GmailSyncJobStatus,
     GmailSyncResponse,
+    GmailSyncStatusResponse,
 )
 from app.sync_jobs import (
     GmailAccountNotConnectedError,
     enqueue_gmail_sync_job,
+    get_gmail_sync_status,
 )
 
 
@@ -128,6 +131,38 @@ def create_gmail_sync(
         job_id=job.job_id,
         status=job.status,
         created=job.created,
+    )
+
+
+@app.get("/sync/status", response_model=GmailSyncStatusResponse)
+def sync_status(
+    profile_id: Annotated[
+        uuid.UUID,
+        Depends(get_current_profile_id),
+    ],
+):
+    current_status = get_gmail_sync_status(profile_id)
+    job = None
+
+    if (
+        current_status.job_id is not None
+        and current_status.job_status is not None
+        and current_status.job_created_at is not None
+    ):
+        job = GmailSyncJobStatus(
+            job_id=current_status.job_id,
+            status=current_status.job_status,
+            started_at=current_status.job_started_at,
+            finished_at=current_status.job_finished_at,
+            error_message=current_status.job_error_message,
+            created_at=current_status.job_created_at,
+        )
+
+    return GmailSyncStatusResponse(
+        connected=current_status.connected,
+        sync_status=current_status.sync_status,
+        last_synced_at=current_status.last_synced_at,
+        job=job,
     )
 
 

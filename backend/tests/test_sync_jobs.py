@@ -201,7 +201,7 @@ class GmailSyncJobLifecycleTests(unittest.TestCase):
         job_sql, job_parameters = self.cursor.execute.call_args_list[0].args
         normalized_job_sql = " ".join(job_sql.split())
         self.assertIn("status = 'failed'", normalized_job_sql)
-        self.assertEqual(len(job_parameters[0]), 500)
+        self.assertEqual(job_parameters[0], "Gmail sync failed")
         self.assertEqual(
             job_parameters[1:],
             (self.job_id, self.gmail_account_id),

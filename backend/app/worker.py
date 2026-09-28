@@ -1,7 +1,12 @@
+import argparse
 import logging
+import os
+import time
 import uuid
 from collections.abc import Mapping
 from dataclasses import dataclass
+
+from dotenv import load_dotenv
 
 from app.db import get_connection
 from app.gmail_accounts import (
@@ -133,3 +138,73 @@ def run_next_gmail_sync_job(
         messages_processed=messages_processed,
         chunks_indexed=chunks_indexed,
     )
+
+
+def log_gmail_sync_result(result: GmailSyncRunResult) -> None:
+    logger.info(
+        "Gmail sync job %s finished with status=%s messages=%s chunks=%s",
+        result.job_id,
+        result.status,
+        result.messages_processed,
+        result.chunks_indexed,
+    )
+
+
+def run_worker_loop(poll_seconds: float) -> None:
+    if poll_seconds <= 0:
+        raise ValueError("poll_seconds must be positive")
+
+    while True:
+        result = run_next_gmail_sync_job()
+
+        if result is None:
+            time.sleep(poll_seconds)
+        else:
+            log_gmail_sync_result(result)
+
+
+def worker_poll_seconds() -> float:
+    raw_value = os.environ.get("WORKER_POLL_SECONDS", "5")
+
+    try:
+        poll_seconds = float(raw_value)
+    except ValueError as exc:
+        raise ValueError("WORKER_POLL_SECONDS must be a number") from exc
+
+    if poll_seconds <= 0:
+        raise ValueError("WORKER_POLL_SECONDS must be positive")
+
+    return poll_seconds
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run the Gmail sync worker")
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help="Process at most one pending job and exit",
+    )
+    arguments = parser.parse_args(argv)
+    load_dotenv()
+    logging.basicConfig(level=logging.INFO)
+
+    if arguments.once:
+        result = run_next_gmail_sync_job()
+
+        if result is None:
+            logger.info("No pending Gmail sync jobs")
+            return 0
+
+        log_gmail_sync_result(result)
+        return 0 if result.status == "done" else 1
+
+    try:
+        run_worker_loop(worker_poll_seconds())
+    except KeyboardInterrupt:
+        logger.info("Gmail sync worker stopped")
+
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from pydantic import BaseModel
 
@@ -29,3 +30,19 @@ class GmailSyncResponse(BaseModel):
     job_id: uuid.UUID
     status: str
     created: bool
+
+
+class GmailSyncJobStatus(BaseModel):
+    job_id: uuid.UUID
+    status: str
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    error_message: str | None = None
+    created_at: datetime
+
+
+class GmailSyncStatusResponse(BaseModel):
+    connected: bool
+    sync_status: str | None = None
+    last_synced_at: datetime | None = None
+    job: GmailSyncJobStatus | None = None
