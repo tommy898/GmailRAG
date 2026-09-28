@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.db import get_connection
@@ -10,6 +11,25 @@ class ProfileNotFoundError(Exception):
 
 class MissingRefreshTokenError(Exception):
     pass
+
+
+class GmailAccountNotFoundError(Exception):
+    pass
+
+
+class IncompleteGmailCredentialsError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class StoredGmailCredentials:
+    account_id: uuid.UUID
+    profile_id: uuid.UUID
+    gmail_address: str
+    access_token_encrypted: str
+    refresh_token_encrypted: str
+    token_expires_at: datetime | None
+    scope: str
 
 
 def get_profile_email(profile_id: uuid.UUID) -> str:
@@ -29,6 +49,85 @@ def get_profile_email(profile_id: uuid.UUID) -> str:
         raise ProfileNotFoundError("Profile does not exist")
 
     return str(row[0]).strip()
+
+
+def get_stored_gmail_credentials(
+    gmail_account_id: uuid.UUID,
+) -> StoredGmailCredentials:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                select
+                    id,
+                    profile_id,
+                    gmail_address,
+                    access_token_encrypted,
+                    refresh_token_encrypted,
+                    token_expires_at,
+                    scope
+                from gmail_accounts
+                where id = %s
+                """,
+                (gmail_account_id,),
+            )
+            row = cursor.fetchone()
+
+    if row is None:
+        raise GmailAccountNotFoundError("Gmail account does not exist")
+
+    access_token_encrypted = row[3]
+    refresh_token_encrypted = row[4]
+
+    if not access_token_encrypted or not refresh_token_encrypted:
+        raise IncompleteGmailCredentialsError(
+            "Gmail account must be reconnected"
+        )
+
+    return StoredGmailCredentials(
+        account_id=row[0],
+        profile_id=row[1],
+        gmail_address=str(row[2]).strip().lower(),
+        access_token_encrypted=str(access_token_encrypted),
+        refresh_token_encrypted=str(refresh_token_encrypted),
+        token_expires_at=row[5],
+        scope=str(row[6] or "").strip(),
+    )
+
+
+def update_gmail_credentials_after_refresh(
+    gmail_account_id: uuid.UUID,
+    access_token_encrypted: str,
+    refresh_token_encrypted: str | None,
+    token_expires_at: datetime | None,
+) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                update gmail_accounts
+                set
+                    access_token_encrypted = %s,
+                    refresh_token_encrypted = coalesce(
+                        %s,
+                        refresh_token_encrypted
+                    ),
+                    token_expires_at = %s,
+                    updated_at = now()
+                where id = %s
+                returning id
+                """,
+                (
+                    access_token_encrypted,
+                    refresh_token_encrypted,
+                    token_expires_at,
+                    gmail_account_id,
+                ),
+            )
+            row = cursor.fetchone()
+
+    if row is None:
+        raise GmailAccountNotFoundError("Gmail account does not exist")
 
 
 def upsert_gmail_account_credentials(

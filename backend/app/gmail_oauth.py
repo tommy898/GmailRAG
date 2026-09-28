@@ -3,7 +3,7 @@ import os
 import secrets
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 
 from cryptography.fernet import InvalidToken
 from google.oauth2.credentials import Credentials
@@ -15,11 +15,14 @@ from app.gmail_accounts import (
     get_profile_email,
     upsert_gmail_account_credentials,
 )
-from app.gmail_service import get_gmail_address
+from app.gmail_service import (
+    GMAIL_READONLY_SCOPE,
+    get_gmail_address,
+    normalize_token_expiry,
+)
 from app.token_crypto import encrypt_token, get_token_cipher
 
 
-GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_OAUTH_STATE_TTL_SECONDS = 10 * 60
 GMAIL_OAUTH_CODE_VERIFIER_BYTES = 64
 
@@ -183,16 +186,6 @@ def get_granted_scopes(credentials: Credentials) -> set[str]:
         scopes = credentials.scopes or []
 
     return {str(scope) for scope in scopes}
-
-
-def normalize_token_expiry(expiry: datetime | None) -> datetime | None:
-    if expiry is None:
-        return None
-
-    if expiry.tzinfo is None:
-        return expiry.replace(tzinfo=UTC)
-
-    return expiry.astimezone(UTC)
 
 
 def complete_gmail_connection(code: str, state: str) -> uuid.UUID:

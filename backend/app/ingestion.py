@@ -28,16 +28,18 @@ def upsert_email(
                 from_email,
                 to_email,
                 subject,
+                sent_at,
                 gmail_date_raw,
                 snippet,
                 body_text
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (gmail_account_id, gmail_message_id) do update set
                 gmail_thread_id = excluded.gmail_thread_id,
                 from_email = excluded.from_email,
                 to_email = excluded.to_email,
                 subject = excluded.subject,
+                sent_at = excluded.sent_at,
                 gmail_date_raw = excluded.gmail_date_raw,
                 snippet = excluded.snippet,
                 body_text = excluded.body_text,
@@ -51,6 +53,7 @@ def upsert_email(
                 email.get("from_email"),
                 email.get("to_email"),
                 email.get("subject"),
+                email.get("sent_at"),
                 email.get("gmail_date_raw"),
                 email.get("snippet"),
                 email.get("body_text"),

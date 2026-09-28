@@ -455,7 +455,19 @@ indexing.py owns chunk and embedding persistence
 replace_email_chunks() replaces all old chunker versions for one email
 embed_and_store_chunks() generates and persists vectors for stored chunks
 index_email() is the shared high-level operation for the future worker
-38 backend tests pass, including indexing boundary coverage
+8.2 stored Gmail credential loading and refresh complete
+fresh access tokens are reused and expired tokens refresh through Google
+refreshed access tokens and rotated refresh tokens are encrypted before storage
+8.3 paginated Gmail message listing and full-message download complete
+Gmail pages use the API maximum of 500 IDs and support an optional sync cap
+full messages stream through one reused Gmail service instead of loading a mailbox at once
+live one-message smoke test confirmed the stored credentials and Gmail API path
+8.4 Gmail MIME normalization complete
+nested MIME parts are traversed, text/plain is preferred, and HTML is a safe text fallback
+attachments are excluded and encoded headers are decoded
+Gmail internalDate becomes a timezone-aware sent_at value with the Date header as fallback
+live one-message smoke test confirmed the normalized record shape without printing message content
+69 backend tests pass across authentication, OAuth, indexing, credentials, Gmail fetching, and normalization
 ```
 
 Build:
