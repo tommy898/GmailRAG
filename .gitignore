@@ -5,6 +5,8 @@ __pycache__/
 .ipynb_checkpoints/
 local_src/
 .env
+.env.*
+!.env.example
 credentials.json
 token.json
 
