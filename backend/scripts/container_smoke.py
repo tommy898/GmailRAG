@@ -29,7 +29,7 @@ def synthetic_environment() -> dict[str, str]:
         "GMAIL_SYNC_DISPATCH": "cloud_run",
         "CLOUD_RUN_PROJECT": "synthetic-project",
         "CLOUD_RUN_REGION": "us-west1",
-        "CLOUD_RUN_JOB": "synthetic-worker",
+        "GMAIL_SYNC_JOB_NAME": "synthetic-worker",
         "PORT": "18080",
     }
 

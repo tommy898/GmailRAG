@@ -29,7 +29,7 @@ def production_environment() -> dict[str, str]:
         "FRONTEND_URL": "https://frontend.example/",
         "CLOUD_RUN_PROJECT": "gmailrag-501319",
         "CLOUD_RUN_REGION": "us-west1",
-        "CLOUD_RUN_JOB": "gmailrag-sync",
+        "GMAIL_SYNC_JOB_NAME": "gmailrag-sync",
     }
 
 

@@ -11,7 +11,7 @@ from app.job_dispatch import SyncJobLaunchError, launch_gmail_sync_job
 CLOUD_ENV = {
     "APP_ENV": "development", "GMAIL_SYNC_DISPATCH": "cloud_run",
     "CLOUD_RUN_PROJECT": "gmailrag-501319", "CLOUD_RUN_REGION": "us-west1",
-    "CLOUD_RUN_JOB": "gmailrag-sync",
+    "GMAIL_SYNC_JOB_NAME": "gmailrag-sync",
 }
 
 
@@ -79,12 +79,29 @@ class JobDispatchTests(unittest.TestCase):
         self.assertNotIn("private-json-key", "".join(traceback.format_exception(caught.exception)))
 
     def test_resource_identifiers_cannot_change_endpoint_or_inject_paths(self):
-        for name in ("CLOUD_RUN_PROJECT", "CLOUD_RUN_REGION", "CLOUD_RUN_JOB"):
+        for name in ("CLOUD_RUN_PROJECT", "CLOUD_RUN_REGION", "GMAIL_SYNC_JOB_NAME"):
             for value in ("", "../other", "x?secret=token", "https://evil.example", "a/b", "has space"):
                 with patch.dict(os.environ, {name: value}):
                     with self.assertRaises(ConfigurationError):
                         get_cloud_run_job_name()
         self.default.assert_not_called()
+
+    def test_reserved_runtime_job_metadata_cannot_change_dispatch_target(self):
+        with patch.dict(os.environ, {"CLOUD_RUN_JOB": "unrelated-runtime-job"}):
+            self.assertEqual(
+                get_cloud_run_job_name(),
+                "projects/gmailrag-501319/locations/us-west1/jobs/gmailrag-sync",
+            )
+
+    def test_reserved_runtime_job_metadata_is_not_a_target_fallback(self):
+        environment = CLOUD_ENV.copy()
+        del environment["GMAIL_SYNC_JOB_NAME"]
+        environment["CLOUD_RUN_JOB"] = "unrelated-runtime-job"
+        with patch.dict(os.environ, environment, clear=True):
+            with self.assertRaisesRegex(ConfigurationError, "GMAIL_SYNC_JOB_NAME"):
+                launch_gmail_sync_job(self.job_id)
+        self.default.assert_not_called()
+        self.session_class.assert_not_called()
 
     def test_production_defaults_to_hosted_and_rejects_local_or_unknown_mode(self):
         with patch.dict(os.environ, {"APP_ENV": "production"}, clear=True):

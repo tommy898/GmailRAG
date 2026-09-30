@@ -41,7 +41,8 @@ def get_sync_dispatch_mode() -> str:
 
 def get_cloud_run_job_name() -> str:
     parts = []
-    for name in ("CLOUD_RUN_PROJECT", "CLOUD_RUN_REGION", "CLOUD_RUN_JOB"):
+    # CLOUD_RUN_JOB is reserved runtime metadata, not our dispatch target.
+    for name in ("CLOUD_RUN_PROJECT", "CLOUD_RUN_REGION", "GMAIL_SYNC_JOB_NAME"):
         value = get_required_environment_variable(name)
         if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", value):
             raise ConfigurationError(f"{name} must be a valid resource identifier")
