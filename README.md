@@ -7,7 +7,7 @@ GmailRAG is a web application that lets a user sign in, authorize read-only Gmai
 Working to finish the whole web app
 
 
-### Google Cloud test users
+### To use the website
 
 I will have to add test user in order to access the web app
 
