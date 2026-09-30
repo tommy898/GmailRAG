@@ -29,6 +29,7 @@ from app.gmail_oauth import (
 )
 from app.gmail_service import GmailProfileError
 from app.job_dispatch import SyncJobLaunchError, launch_gmail_sync_job
+from app.model_artifacts import validate_packaged_models
 from app.rag import answer_question
 from app.schemas import (
     AskRequest,
@@ -72,6 +73,7 @@ router = APIRouter()
 @asynccontextmanager
 async def lifespan(application: FastAPI):
     validate_production_configuration("api")
+    validate_packaged_models("api")
     yield
 
 

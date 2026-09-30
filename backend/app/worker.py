@@ -23,6 +23,7 @@ from app.gmail_service import (
     prepare_gmail_sync,
 )
 from app.indexing import index_email
+from app.model_artifacts import validate_packaged_models
 from app.ingestion import (
     delete_email,
     delete_emails_missing_from_full_sync,
@@ -257,6 +258,7 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         validate_production_configuration("worker")
+        validate_packaged_models("worker")
         if is_production() and not (arguments.job_id or arguments.recover_job):
             raise ConfigurationError("Hosted worker requires --job-id; polling and --once are development-only")
     except ConfigurationError as exc:

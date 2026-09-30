@@ -1,4 +1,5 @@
 from sentence_transformers import CrossEncoder
+from app.model_artifacts import model_loading_options
 
 RERANKING_MODEL = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
@@ -8,7 +9,7 @@ def get_reranking_model() -> CrossEncoder:
     global _model
 
     if _model is None:
-        _model = CrossEncoder(RERANKING_MODEL)
+        _model = CrossEncoder(**model_loading_options("reranking", RERANKING_MODEL))
 
     return _model
 
@@ -40,4 +41,3 @@ def rerank_candidates(
     )
 
     return reranked[:top_k]
-

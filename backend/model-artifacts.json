@@ -1,0 +1,12 @@
+{
+  "embedding": {
+    "repo_id": "sentence-transformers/all-MiniLM-L6-v2",
+    "revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "directory": "embedding"
+  },
+  "reranking": {
+    "repo_id": "cross-encoder/ms-marco-MiniLM-L-6-v2",
+    "revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+    "directory": "reranking"
+  }
+}

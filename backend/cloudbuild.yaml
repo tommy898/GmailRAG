@@ -1,0 +1,40 @@
+# Submit from the REPOSITORY ROOT. This builds/tests/publishes images only.
+# No Secret Manager access, Cloud Run deployment, or actual synchronization.
+substitutions:
+  _REGION: us-west1
+  _REPOSITORY: gmailrag
+  _SOURCE_REVISION: UNSET
+timeout: 1800s
+options:
+  logging: CLOUD_LOGGING_ONLY
+steps:
+  - id: source-preflight
+    name: python:3.14.6-slim-bookworm@sha256:4c92ffcde4dd6f1ff72a24518f49fd4990b27134987dfa31a733badde66df9f8
+    entrypoint: python
+    args:
+      - backend/scripts/validate_build.py
+      - --project
+      - $PROJECT_ID
+      - --region
+      - ${_REGION}
+      - --repository
+      - ${_REPOSITORY}
+      - --revision
+      - ${_SOURCE_REVISION}
+  - id: build-api
+    name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '--platform=linux/amd64', '--file=backend/Dockerfile', '--target=api', '--build-arg=SOURCE_REVISION=${_SOURCE_REVISION}', '--tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_SOURCE_REVISION}-$BUILD_ID', '.']
+  - id: build-worker
+    name: gcr.io/cloud-builders/docker
+    env: ['DOCKER_BUILDKIT=1']
+    args: ['build', '--platform=linux/amd64', '--file=backend/Dockerfile', '--target=worker', '--build-arg=SOURCE_REVISION=${_SOURCE_REVISION}', '--tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/worker:${_SOURCE_REVISION}-$BUILD_ID', '.']
+  - id: offline-api-check
+    name: gcr.io/cloud-builders/docker
+    args: ['run', '--rm', '--network=none', '--read-only', '--tmpfs=/tmp:rw,nosuid,size=256m', '--memory=2g', '--cpus=1', '--entrypoint=python', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_SOURCE_REVISION}-$BUILD_ID', '-m', 'scripts.container_smoke', '--role=api', '--require-linux']
+  - id: offline-worker-check
+    name: gcr.io/cloud-builders/docker
+    args: ['run', '--rm', '--network=none', '--read-only', '--tmpfs=/tmp:rw,nosuid,size=256m', '--memory=2g', '--cpus=1', '--entrypoint=python', '${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/worker:${_SOURCE_REVISION}-$BUILD_ID', '-m', 'scripts.container_smoke', '--role=worker', '--require-linux']
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/api:${_SOURCE_REVISION}-$BUILD_ID
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPOSITORY}/worker:${_SOURCE_REVISION}-$BUILD_ID

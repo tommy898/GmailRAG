@@ -1,4 +1,5 @@
 from sentence_transformers import SentenceTransformer
+from app.model_artifacts import model_loading_options
 
 
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
@@ -11,7 +12,7 @@ def get_embedding_model() -> SentenceTransformer:
     global _model
 
     if _model is None:
-        _model = SentenceTransformer(EMBEDDING_MODEL)
+        _model = SentenceTransformer(**model_loading_options("embedding", EMBEDDING_MODEL))
 
     return _model
 
@@ -34,4 +35,3 @@ def embed_texts(texts: list[str], batch_size: int = 64) -> list[list[float]]:
 
 def embed_text(text: str) -> list[float]:
     return embed_texts([text])[0]
-

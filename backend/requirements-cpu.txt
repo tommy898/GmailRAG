@@ -1,0 +1,4 @@
+# Install this separately BEFORE requirements.txt, from the official CPU index.
+# The runtime constraints' torch==2.13.0 also accepts this CPU local version.
+--index-url https://download.pytorch.org/whl/cpu
+torch==2.13.0+cpu
