@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   beginGmailConnection,
@@ -42,6 +42,7 @@ export function GmailSidebarPanel() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const actionInFlight = useRef(false);
 
   const refreshStatus = useCallback(async () => {
     setErrorMessage(null);
@@ -137,6 +138,11 @@ export function GmailSidebarPanel() {
   }, [activeJobId, activeJobStatus]);
 
   async function handleConnect() {
+    if (actionInFlight.current) {
+      return;
+    }
+
+    actionInFlight.current = true;
     setErrorMessage(null);
     setIsSubmitting(true);
 
@@ -148,10 +154,16 @@ export function GmailSidebarPanel() {
         getApiErrorMessage(error, "Gmail connection could not be started."),
       );
       setIsSubmitting(false);
+      actionInFlight.current = false;
     }
   }
 
   async function handleSync() {
+    if (actionInFlight.current) {
+      return;
+    }
+
+    actionInFlight.current = true;
     setErrorMessage(null);
     setResultMessage(null);
     setIsSubmitting(true);
@@ -170,6 +182,7 @@ export function GmailSidebarPanel() {
       );
     } finally {
       setIsSubmitting(false);
+      actionInFlight.current = false;
     }
   }
 
@@ -182,9 +195,13 @@ export function GmailSidebarPanel() {
           Gmail status
         </h2>
         {isLoading ? (
-          <Skeleton aria-label="Checking Gmail status" className="h-5 w-36" />
+          <div role="status">
+            <Skeleton aria-hidden="true" className="h-5 w-36" />
+            <span className="sr-only">Checking Gmail status</span>
+          </div>
         ) : status ? (
           <p
+            role="status"
             className={`text-sm font-medium ${
               status.connected ? "text-success" : "text-error"
             }`}
@@ -209,6 +226,7 @@ export function GmailSidebarPanel() {
             type="button"
             className="w-full"
             disabled={isLoading || isSubmitting || isSyncActive}
+            aria-busy={isSubmitting || isSyncActive}
             onClick={handleSync}
           >
             {isSubmitting || isSyncActive ? "Syncing..." : "Sync Gmail"}
@@ -218,6 +236,7 @@ export function GmailSidebarPanel() {
             type="button"
             className="w-full"
             disabled={isLoading || isSubmitting}
+            aria-busy={isSubmitting}
             onClick={handleConnect}
           >
             {isSubmitting ? "Connecting..." : "Connect Gmail"}

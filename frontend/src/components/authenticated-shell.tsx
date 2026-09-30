@@ -1,18 +1,10 @@
 import type { CSSProperties } from "react";
 import Image from "next/image";
 
-import { AskTestForm } from "@/components/ask-test-form";
-import { ConnectGmailButton } from "@/components/auth/connect-gmail-button";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 import { GmailSidebarPanel } from "@/components/gmail-sidebar-panel";
-import { SyncTestPanel } from "@/components/sync-test-panel";
+import { LatestAnswerWorkspace } from "@/components/latest-answer-workspace";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Empty,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyTitle,
-} from "@/components/ui/empty";
 import {
   Sidebar,
   SidebarContent,
@@ -73,30 +65,7 @@ export function AuthenticatedShell({
             </Alert>
           ) : null}
 
-          <section
-            aria-label="Question and answer workspace"
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            <Empty>
-              <EmptyHeader>
-                <EmptyTitle>Ask about your inbox</EmptyTitle>
-                <EmptyDescription>
-                  Your latest question and answer will appear here.
-                </EmptyDescription>
-              </EmptyHeader>
-            </Empty>
-          </section>
-
-          <details className="rounded-lg border p-4 text-sm">
-            <summary className="cursor-pointer font-medium">
-              Existing test controls
-            </summary>
-            <div className="mt-4 flex flex-col gap-4 overflow-auto">
-              <ConnectGmailButton />
-              <SyncTestPanel />
-              <AskTestForm />
-            </div>
-          </details>
+          <LatestAnswerWorkspace />
         </div>
       </SidebarInset>
 

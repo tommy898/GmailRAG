@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
@@ -20,8 +20,14 @@ export function SignInButton({
     initialErrorMessage ?? null,
   );
   const [isLoading, setIsLoading] = useState(false);
+  const requestInFlight = useRef(false);
 
   async function handleSignIn() {
+    if (requestInFlight.current) {
+      return;
+    }
+
+    requestInFlight.current = true;
     setErrorMessage(null);
     setIsLoading(true);
 
@@ -37,10 +43,12 @@ export function SignInButton({
       if (error) {
         setErrorMessage(signInFailureMessage);
         setIsLoading(false);
+        requestInFlight.current = false;
       }
     } catch {
       setErrorMessage(signInFailureMessage);
       setIsLoading(false);
+      requestInFlight.current = false;
     }
   }
 

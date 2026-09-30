@@ -1,17 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { createClient } from "@/lib/supabase/client";
 
 export function SignOutButton() {
   const router = useRouter();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const requestInFlight = useRef(false);
 
   async function handleSignOut() {
+    if (requestInFlight.current) {
+      return;
+    }
+
+    requestInFlight.current = true;
     setErrorMessage(null);
     setIsLoading(true);
 
@@ -21,14 +28,16 @@ export function SignOutButton() {
 
       if (error) {
         setErrorMessage("Sign out could not be completed. Try again.");
+        setIsLoading(false);
+        requestInFlight.current = false;
         return;
       }
 
       router.refresh();
     } catch {
       setErrorMessage("Sign out could not be completed. Try again.");
-    } finally {
       setIsLoading(false);
+      requestInFlight.current = false;
     }
   }
 
@@ -39,12 +48,17 @@ export function SignOutButton() {
         variant="outline"
         className="w-full"
         disabled={isLoading}
+        aria-busy={isLoading}
         onClick={handleSignOut}
       >
         {isLoading ? "Signing out..." : "Log out"}
       </Button>
 
-      {errorMessage ? <p role="alert">{errorMessage}</p> : null}
+      {errorMessage ? (
+        <Alert>
+          <AlertDescription>{errorMessage}</AlertDescription>
+        </Alert>
+      ) : null}
     </>
   );
 }
