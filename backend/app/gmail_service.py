@@ -1,6 +1,5 @@
 import base64
 import binascii
-import os
 import re
 import time
 import uuid
@@ -19,6 +18,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from app.config import get_required_environment_variable
 from app.gmail_accounts import (
     StoredGmailCredentials,
     get_stored_gmail_credentials,
@@ -134,15 +134,6 @@ class GmailHtmlTextExtractor(HTMLParser):
 
     def text(self) -> str:
         return "".join(self.parts)
-
-
-def get_required_environment_variable(name: str) -> str:
-    value = os.environ.get(name)
-
-    if not value:
-        raise RuntimeError(f"{name} environment variable is not set")
-
-    return value
 
 
 def normalize_token_expiry(expiry: datetime | None) -> datetime | None:

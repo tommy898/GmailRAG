@@ -1,0 +1,3 @@
+-r requirements.txt
+# Starlette's TestClient supports the existing HTTPX adapter.
+httpx==0.28.1

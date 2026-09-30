@@ -8,6 +8,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
+from app.config import ConfigurationError, validate_production_configuration
 from app.db import get_connection
 from app.gmail_accounts import (
     GmailAccountNotFoundError,
@@ -242,6 +243,12 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     load_dotenv()
     logging.basicConfig(level=logging.INFO)
+
+    try:
+        validate_production_configuration("worker")
+    except ConfigurationError as exc:
+        logger.error("Worker configuration invalid: %s", exc)
+        return 1
 
     if arguments.once:
         result = run_next_gmail_sync_job()

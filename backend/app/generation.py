@@ -1,6 +1,8 @@
 import os
 from google import genai
 
+from app.config import get_required_environment_variable
+
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL","gemini-3.5-flash")
 
 _client: genai.Client | None=None
@@ -8,10 +10,7 @@ _client: genai.Client | None=None
 def get_gemini_client() -> genai.Client:
     global _client
     if _client is None:
-        api_key = os.environ.get("GEMINI_API_KEY")
-
-        if not api_key:
-            raise ValueError("API KEY IS NOT SET")
+        api_key = get_required_environment_variable("GEMINI_API_KEY")
 
         _client = genai.Client(api_key=api_key)
 

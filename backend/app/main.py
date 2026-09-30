@@ -1,13 +1,19 @@
 import logging
 import uuid
+from contextlib import asynccontextmanager
 from typing import Annotated
 from urllib.parse import urlencode
 
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from app.auth import get_current_profile_id
+from app.config import (
+    ConfigurationError,
+    get_frontend_url,
+    validate_production_configuration,
+)
 from app.db import fetch_database_time
 from app.gmail_accounts import (
     MissingRefreshTokenError,
@@ -20,7 +26,6 @@ from app.gmail_oauth import (
     MissingGmailScopeError,
     build_gmail_authorization_url,
     complete_gmail_connection,
-    get_frontend_url,
 )
 from app.gmail_service import GmailProfileError
 from app.rag import answer_question
@@ -60,22 +65,42 @@ class RedactOAuthCallbackQueryFilter(logging.Filter):
 logging.getLogger("uvicorn.access").addFilter(
     RedactOAuthCallbackQueryFilter()
 )
-app = FastAPI(title="GmailRAG API")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Authorization", "Content-Type"],
-)
+router = APIRouter()
 
 
-@app.get("/health")
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    validate_production_configuration("api")
+    yield
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="GmailRAG API", lifespan=lifespan)
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=[get_frontend_url()],
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+    )
+
+    @application.exception_handler(ConfigurationError)
+    async def configuration_error(request: Request, exc: ConfigurationError):
+        logger.error("API configuration invalid: %s", exc)
+        return JSONResponse(
+            status_code=503,
+            content={"detail": "Service configuration is unavailable"},
+        )
+
+    application.include_router(router)
+    return application
+
+
+@router.get("/health")
 def health():
     return {"status": "ok"}
 
 
-@app.get("/db-health")
+@router.get("/db-health")
 def db_health():
     database_time = fetch_database_time()
 
@@ -85,7 +110,7 @@ def db_health():
     }
 
 
-@app.post("/ask", response_model=AskResponse)
+@router.post("/ask", response_model=AskResponse)
 def ask(
     request: AskRequest,
     profile_id: Annotated[
@@ -96,7 +121,7 @@ def ask(
     return answer_question(request.question, profile_id)
 
 
-@app.get("/gmail/connect", response_model=GmailConnectResponse)
+@router.get("/gmail/connect", response_model=GmailConnectResponse)
 def connect_gmail(
     profile_id: Annotated[
         uuid.UUID,
@@ -108,7 +133,7 @@ def connect_gmail(
     )
 
 
-@app.post(
+@router.post(
     "/gmail/sync",
     response_model=GmailSyncResponse,
     status_code=status.HTTP_202_ACCEPTED,
@@ -134,7 +159,7 @@ def create_gmail_sync(
     )
 
 
-@app.get("/sync/status", response_model=GmailSyncStatusResponse)
+@router.get("/sync/status", response_model=GmailSyncStatusResponse)
 def sync_status(
     profile_id: Annotated[
         uuid.UUID,
@@ -174,7 +199,7 @@ def redirect_to_frontend(**query_parameters: str) -> RedirectResponse:
     )
 
 
-@app.get("/gmail/callback", response_class=RedirectResponse)
+@router.get("/gmail/callback", response_class=RedirectResponse)
 def gmail_callback(
     code: str | None = None,
     state: str | None = None,
@@ -227,3 +252,6 @@ def gmail_callback(
         return redirect_to_frontend(gmail_error="connection_failed")
 
     return redirect_to_frontend(gmail="connected")
+
+
+app = create_app()

@@ -1,11 +1,13 @@
-fastapi
-uvicorn[standard]
-psycopg[binary]
-sentence-transformers
-google-genai
-PyJWT[crypto]
-google-auth
-google-auth-oauthlib
-google-api-python-client
-cryptography
-python-dotenv
+# Keep the tested dependency graph stable; Linux CPU packaging is slice 10.3.
+-c constraints.txt
+fastapi==0.139.0
+uvicorn[standard]==0.51.0
+psycopg[binary]==3.3.4
+sentence-transformers==5.6.0
+google-genai==2.11.0
+PyJWT[crypto]==2.13.0
+google-auth==2.55.2
+google-auth-oauthlib==1.4.0
+google-api-python-client==2.198.0
+cryptography==49.0.0
+python-dotenv==1.2.2

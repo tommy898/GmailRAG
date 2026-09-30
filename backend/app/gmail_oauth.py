@@ -1,5 +1,4 @@
 import json
-import os
 import secrets
 import uuid
 from dataclasses import dataclass
@@ -10,6 +9,8 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from oauthlib.oauth2 import OAuth2Error
 from requests.exceptions import RequestException
+
+from app.config import get_frontend_url, get_required_environment_variable
 
 from app.gmail_accounts import (
     get_profile_email,
@@ -47,19 +48,6 @@ class MissingGmailScopeError(Exception):
 
 class GmailAccountMismatchError(Exception):
     pass
-
-
-def get_required_environment_variable(name: str) -> str:
-    value = os.environ.get(name)
-
-    if not value:
-        raise RuntimeError(f"{name} environment variable is not set")
-
-    return value
-
-
-def get_frontend_url() -> str:
-    return get_required_environment_variable("FRONTEND_URL").rstrip("/")
 
 
 def get_google_client_config() -> dict:

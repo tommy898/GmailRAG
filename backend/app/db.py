@@ -1,7 +1,8 @@
-import os
 from collections.abc import Sequence
 
 import psycopg
+
+from app.config import get_required_environment_variable
 
 
 def embedding_to_pgvector(embedding: Sequence[float]) -> str:
@@ -9,12 +10,7 @@ def embedding_to_pgvector(embedding: Sequence[float]) -> str:
 
 
 def get_database_url():
-    database_url = os.environ.get("DATABASE_URL")
-
-    if not database_url:
-        raise ValueError("DATABASE_URL environment variable is not set")
-
-    return database_url
+    return get_required_environment_variable("DATABASE_URL")
 
 
 def get_connection():

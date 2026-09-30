@@ -1,4 +1,3 @@
-import os
 import uuid
 from typing import Annotated
 
@@ -8,6 +7,8 @@ from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from app.config import get_supabase_url
+
 
 _bearer_scheme = HTTPBearer(auto_error=False)
 _jwks_client: PyJWKClient | None = None
@@ -15,15 +16,6 @@ _jwks_client: PyJWKClient | None = None
 
 class InvalidAccessTokenError(Exception):
     pass
-
-
-def get_supabase_url() -> str:
-    supabase_url = os.environ.get("SUPABASE_URL")
-
-    if not supabase_url:
-        raise RuntimeError("SUPABASE_URL environment variable is not set")
-
-    return supabase_url.rstrip("/")
 
 
 def get_supabase_issuer() -> str:

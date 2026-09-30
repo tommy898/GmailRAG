@@ -1,6 +1,6 @@
-import os
-
 from cryptography.fernet import Fernet, InvalidToken
+
+from app.config import ConfigurationError, get_required_environment_variable
 
 
 _fernet: Fernet | None = None
@@ -14,19 +14,14 @@ def get_token_cipher() -> Fernet:
     global _fernet
 
     if _fernet is None:
-        encryption_key = os.environ.get("TOKEN_ENCRYPTION_KEY")
-
-        if not encryption_key:
-            raise RuntimeError(
-                "TOKEN_ENCRYPTION_KEY environment variable is not set"
-            )
+        encryption_key = get_required_environment_variable("TOKEN_ENCRYPTION_KEY")
 
         try:
             _fernet = Fernet(encryption_key.encode())
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(
+        except (TypeError, ValueError):
+            raise ConfigurationError(
                 "TOKEN_ENCRYPTION_KEY is invalid"
-            ) from exc
+            ) from None
 
     return _fernet
 
