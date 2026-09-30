@@ -1,4 +1,7 @@
+import Image from "next/image";
+
 import { SignInButton } from "@/components/auth/sign-in-button";
+import gmailRagLogo from "@/components/ui/gmailRAG.png";
 
 type SignedOutScreenProps = {
   authErrorMessage?: string;
@@ -15,9 +18,12 @@ export function SignedOutScreen({
       >
         <div className="flex w-full max-w-sm flex-col items-center text-center">
           <div className="flex flex-col items-center gap-4">
-            <span
-              aria-hidden="true"
-              className="size-14 rounded-full border border-foreground"
+            <Image
+              src={gmailRagLogo}
+              alt=""
+              width={56}
+              height={56}
+              className="size-14 rounded-full object-cover"
             />
             <h1
               id="sign-in-heading"

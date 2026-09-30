@@ -13,6 +13,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
+const SYNC_POLL_INTERVAL_MS = 3000;
+
+function hasActiveJob(status: GmailSyncStatusResponse | null) {
+  return status?.job?.status === "pending" || status?.job?.status === "running";
+}
+
 function formatLastSync(value: string | null) {
   if (!value) {
     return "Never";
@@ -28,29 +34,6 @@ function formatLastSync(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(date);
-}
-
-function getAccountState(status: GmailSyncStatusResponse) {
-  if (!status.connected) {
-    return "Connect Gmail to start using your inbox.";
-  }
-
-  if (status.job?.status === "pending" || status.job?.status === "running") {
-    return "Synchronization is in progress.";
-  }
-
-  switch (status.sync_status) {
-    case "not_synced":
-      return "Gmail is connected and ready for its first sync.";
-    case "syncing":
-      return "Synchronization is in progress.";
-    case "ready":
-      return "Your inbox is ready for questions.";
-    case "failed":
-      return status.job?.error_message ?? "Gmail sync failed";
-    default:
-      return "Gmail status is unavailable.";
-  }
 }
 
 export function GmailSidebarPanel() {
@@ -103,6 +86,56 @@ export function GmailSidebarPanel() {
     };
   }, []);
 
+  const activeJobId = hasActiveJob(status) ? status?.job?.job_id : null;
+  const activeJobStatus = hasActiveJob(status) ? status?.job?.status : null;
+
+  useEffect(() => {
+    if (!activeJobId) {
+      return;
+    }
+
+    let cancelled = false;
+    let timeoutId: number;
+
+    async function pollStatus() {
+      try {
+        const nextStatus = await getGmailSyncStatus();
+
+        if (cancelled) {
+          return;
+        }
+
+        setStatus(nextStatus);
+        setErrorMessage(null);
+
+        if (hasActiveJob(nextStatus)) {
+          timeoutId = window.setTimeout(pollStatus, SYNC_POLL_INTERVAL_MS);
+        } else if (nextStatus.job?.status === "done") {
+          setResultMessage("Gmail sync completed.");
+        } else if (nextStatus.job?.status === "failed") {
+          setResultMessage(null);
+        }
+      } catch (error) {
+        if (cancelled) {
+          return;
+        }
+
+        setStatus(null);
+        setResultMessage(null);
+        setErrorMessage(
+          getApiErrorMessage(error, "Gmail status could not be loaded."),
+        );
+      }
+    }
+
+    timeoutId = window.setTimeout(pollStatus, SYNC_POLL_INTERVAL_MS);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeJobId, activeJobStatus]);
+
   async function handleConnect() {
     setErrorMessage(null);
     setIsSubmitting(true);
@@ -140,14 +173,11 @@ export function GmailSidebarPanel() {
     }
   }
 
-  const isSyncActive =
-    status?.sync_status === "syncing" ||
-    status?.job?.status === "pending" ||
-    status?.job?.status === "running";
+  const isSyncActive = status?.sync_status === "syncing" || hasActiveJob(status);
 
   return (
-    <section aria-labelledby="gmail-status-heading" className="space-y-6 px-4 py-6">
-      <div className="space-y-2">
+    <section aria-labelledby="gmail-status-heading" className="space-y-8 px-4 py-8 [&_h2]:leading-6 [&_p]:leading-6">
+      <div className="space-y-3">
         <h2 id="gmail-status-heading" className="text-sm font-medium">
           Gmail status
         </h2>
@@ -164,26 +194,21 @@ export function GmailSidebarPanel() {
         ) : (
           <p className="text-sm text-muted-foreground">Status unavailable</p>
         )}
-        {status ? (
-          <p className="text-sm text-muted-foreground">
-            {getAccountState(status)}
-          </p>
-        ) : null}
       </div>
 
-      <div className="space-y-1">
+      <div className="space-y-2">
         <p className="text-xs text-muted-foreground">Last synchronized</p>
         <p className="text-sm">
           {status ? formatLastSync(status.last_synced_at) : "Unavailable"}
         </p>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-3">
         {status?.connected ? (
           <Button
             type="button"
             className="w-full"
-            disabled={isSubmitting || isSyncActive}
+            disabled={isLoading || isSubmitting || isSyncActive}
             onClick={handleSync}
           >
             {isSubmitting || isSyncActive ? "Syncing..." : "Sync Gmail"}
@@ -192,7 +217,7 @@ export function GmailSidebarPanel() {
           <Button
             type="button"
             className="w-full"
-            disabled={isSubmitting}
+            disabled={isLoading || isSubmitting}
             onClick={handleConnect}
           >
             {isSubmitting ? "Connecting..." : "Connect Gmail"}
@@ -226,6 +251,14 @@ export function GmailSidebarPanel() {
         <p role="status" className="text-sm text-muted-foreground">
           {resultMessage}
         </p>
+      ) : null}
+
+      {status?.sync_status === "failed" && status.job?.status === "failed" ? (
+        <Alert role="alert">
+          <AlertDescription>
+            {status.job?.error_message ?? "Gmail sync failed."}
+          </AlertDescription>
+        </Alert>
       ) : null}
 
       {errorMessage ? (
