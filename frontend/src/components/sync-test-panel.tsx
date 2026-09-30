@@ -2,87 +2,16 @@
 
 import { useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
-
-type SyncJobStatus = {
-  job_id: string;
-  status: string;
-  started_at: string | null;
-  finished_at: string | null;
-  error_message: string | null;
-  created_at: string;
-};
-
-type SyncStatusResponse = {
-  connected: boolean;
-  sync_status: string | null;
-  last_synced_at: string | null;
-  job: SyncJobStatus | null;
-};
-
-type SyncStartResponse = {
-  job_id: string;
-  status: string;
-  created: boolean;
-};
-
-type ErrorResponse = {
-  detail?: string;
-};
-
-async function authenticatedRequest(
-  path: string,
-  init?: RequestInit,
-) {
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-
-  if (!apiUrl) {
-    throw new Error("NEXT_PUBLIC_API_URL is not set");
-  }
-
-  const supabase = createClient();
-  const {
-    data: { session },
-    error: sessionError,
-  } = await supabase.auth.getSession();
-
-  if (sessionError) {
-    throw sessionError;
-  }
-
-  if (!session) {
-    throw new Error("No Supabase session found");
-  }
-
-  return fetch(`${apiUrl}${path}`, {
-    ...init,
-    headers: {
-      ...init?.headers,
-      Authorization: `Bearer ${session.access_token}`,
-    },
-  });
-}
-
-async function readResponse<T extends object>(
-  response: Response,
-): Promise<T> {
-  const body = (await response.json()) as T | ErrorResponse;
-
-  if (!response.ok) {
-    const message =
-      "detail" in body && body.detail
-        ? body.detail
-        : "Sync request failed";
-
-    throw new Error(message);
-  }
-
-  return body as T;
-}
+import {
+  getApiErrorMessage,
+  getGmailSyncStatus,
+  startGmailSync,
+} from "@/lib/api/client";
+import type { GmailSyncStatusResponse } from "@/lib/api/types";
 
 export function SyncTestPanel() {
   const [syncStatus, setSyncStatus] =
-    useState<SyncStatusResponse | null>(null);
+    useState<GmailSyncStatusResponse | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(
     null,
   );
@@ -92,9 +21,7 @@ export function SyncTestPanel() {
   const [isLoading, setIsLoading] = useState(false);
 
   async function loadStatus() {
-    const response = await authenticatedRequest("/sync/status");
-    const body = await readResponse<SyncStatusResponse>(response);
-    setSyncStatus(body);
+    setSyncStatus(await getGmailSyncStatus());
   }
 
   async function startSync() {
@@ -103,10 +30,7 @@ export function SyncTestPanel() {
     setResultMessage(null);
 
     try {
-      const response = await authenticatedRequest("/gmail/sync", {
-        method: "POST",
-      });
-      const body = await readResponse<SyncStartResponse>(response);
+      const body = await startGmailSync();
       setResultMessage(
         body.created
           ? `Sync job created: ${body.status}`
@@ -115,7 +39,7 @@ export function SyncTestPanel() {
       await loadStatus();
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Sync request failed",
+        getApiErrorMessage(error, "The sync could not be started."),
       );
     } finally {
       setIsLoading(false);
@@ -130,7 +54,7 @@ export function SyncTestPanel() {
       await loadStatus();
     } catch (error) {
       setErrorMessage(
-        error instanceof Error ? error.message : "Status request failed",
+        getApiErrorMessage(error, "Sync status could not be refreshed."),
       );
     } finally {
       setIsLoading(false);

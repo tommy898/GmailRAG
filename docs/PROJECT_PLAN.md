@@ -1,11 +1,5 @@
 # GmailRAG Project Plan (for AI Agent)
 
-
-GmailRAG has a working local RAG demo pipeline:
-
-
-The local demo is functionally complete. It should now be treated as the reference implementation while the project moves into the web-product phase.
-
 ## Product Goal
 
 Build a web app that lets a user connect Gmail, sync recent emails, and ask natural-language questions about their inbox.
@@ -561,28 +555,340 @@ failed jobs store readable errors
 
 Goal: build the user-facing website.
 
-Pages:
+#### Frontend Design Contract (Read Before Every Frontend Operation)
+
+This section is an execution gate. Before planning, designing, or editing any
+frontend code or asset, re-read and follow these requirements:
 
 ```text
-landing page
-sign in / sign up
-connect Gmail
-sync status
-ask inbox
-answer detail
-settings / disconnect Gmail
+desktop-only v1 experience
+black-and-white minimalist visual direction
+monochrome palette: black, white, and approved neutral grays only
+no accent colors unless the project owner explicitly approves them
+green and red are approved only as semantic Gmail connection-status colors
+Figma communicates visual direction and product intent; it is a reference, not a pixel-perfect implementation mandate
+the project owner will select or provide UI component references
+do not invent visual component designs or substitute self-created UI components without explicit approval
+do not begin a frontend implementation slice until its plan and component references are approved
 ```
 
-Core UI components:
+The frontend must use one centralized design-token system. Reusable visual
+values must come from that system instead of being chosen independently inside
+individual components. At minimum, define and consistently reuse:
 
 ```text
-question input
-answer panel
-source email cards
-sync status indicator
-loading states
-error states
-empty states
+font family
+type scale and line heights
+font weights
+spacing scale
+control heights
+content widths
+border widths and colors
+corner-radius scale
+black, white, and neutral-gray palette
+```
+
+Do not introduce near-duplicate arbitrary values, such as choosing `18px` in
+one component and `16px` in a comparable component without an approved token or
+documented reason. If the required component reference or token is missing,
+pause frontend implementation and ask the project owner instead of inventing it.
+
+#### Approved V1 Frontend Scope
+
+The project owner approved the following desktop-only UI inventory. Keep these
+views, components, and behaviors in the V1 frontend:
+
+```text
+Google-only sign-in screen
+GmailRAG brand mark and wordmark
+short product description
+Google sign-in button
+test-user notice while Google OAuth remains in testing
+GitHub portfolio link
+desktop application shell with header, main content area, and right sidebar
+signed-in account identity
+Gmail connection status
+last synchronization time
+Connect Gmail action when the account is disconnected
+Sync Gmail action when the account is connected
+Log out action
+text-only question composer and submit action
+latest user question presentation
+latest grounded answer presentation
+source-email items beneath the answer
+no-sources state
+connection, synchronization, and answer loading states
+connection, synchronization, and answer error states
+empty states for disconnected, not-synced, and ready-to-ask conditions
+```
+
+The V1 question interface must not imply conversational memory. Each `/ask`
+request is independent, so the workspace presents the latest question, answer,
+and sources rather than claiming to maintain a persistent multi-turn chat.
+
+#### Approved Component Sources
+
+Use `shadcn/ui` as the base component system for general interface primitives,
+including buttons, inputs, cards/items, badges, alerts, empty states, loading
+states, separators, scroll areas, and the desktop sidebar. Use its centralized
+CSS-variable theming so these components follow the project design tokens.
+
+Use Vercel AI Elements as the source for AI-specific presentation, limited to
+the text prompt input, latest user message, latest answer, and source
+presentation. Remove or omit the example features that are outside V1:
+
+```text
+model selection
+file and image attachments
+speech input
+emoji input
+web-search controls
+response branching
+message editing
+persistent multi-turn conversation UI
+```
+
+AI Elements is a presentation source, not authorization to replace the
+existing application architecture. The frontend must continue calling the
+FastAPI `POST /ask` endpoint and rendering its JSON response. Do not introduce
+Vercel AI Gateway, a second model API, or a replacement chat backend merely to
+use an AI Elements component.
+
+Product-specific React components may compose the approved shadcn/ui and AI
+Elements primitives and connect them to GmailRAG data and actions. They must not
+invent an independent visual style or bypass the centralized design tokens.
+
+Use Google's official branding asset and requirements for the Google sign-in
+button. Use one consistent monochrome icon family for all non-Google icons; do
+not mix icon families.
+
+#### Approved Status, Sync, And Source Presentation
+
+Display Gmail connection as simple semantic text. Use `Gmail connected` in the
+shared success-green token and `Gmail not connected` in the shared error-red
+token. Keep the text label so status remains understandable without relying on
+color alone. Do not display raw `true` or `false` values.
+
+Use the approved shadcn/ui Button primitive for synchronization. Its normal
+label is `Sync Gmail`. While a request or active job is in progress, disable
+the button and show `Syncing...`. Synchronization results and failures use the
+shared status and alert components rather than new one-off styles.
+
+Present answer evidence as a read-only list named `EmailSourceItem`, not as an
+editable textarea and not necessarily as a visually boxed card. Compose each
+item from the approved shadcn/ui Item/text primitives and separators. Place the
+list directly beneath the latest answer and show only:
+
+```text
+email subject
+sender email
+email date
+matching email excerpt
+```
+
+Do not display the internal retrieval score. The score remains backend
+metadata and is not useful evidence for the user.
+
+#### Milestone 9 Development Order
+
+Implement the frontend in the following slices. Finish and verify each slice
+before starting the next. Keep the existing diagnostic auth, sync, and ask
+controls until their production replacements pass the same flow; do not delete
+working behavior early.
+
+##### 9.1 Component And Token Foundation
+
+```text
+initialize shadcn/ui in the existing Next.js application
+use CSS variables as the single source of design tokens
+establish the approved monochrome palette and semantic success/error colors
+standardize Geist as the application font
+standardize type, spacing, control-height, width, border, and radius scales
+remove the current conflict between Geist theme variables and the body Arial fallback
+resolve the unapproved automatic system-dark styling in favor of the approved V1 presentation
+install only the approved shadcn/ui primitives needed by later slices
+verify frontend lint and production build
+```
+
+This slice changes foundations only. It does not redesign the page or alter API
+behavior. No manual product-flow test is required beyond visually confirming
+that the temporary page still renders.
+
+Status:
+
+```text
+complete locally
+shadcn/ui initialized with the approved Radix Vega preset, Neutral base, CSS variables, Lucide, and Geist
+approved base primitives installed without replacing the working diagnostic UI
+light-only V1 tokens established; automatic system-dark behavior removed
+shared success-green and error-red semantic tokens established
+Geist is the single application sans font; generated Inter and Arial conflicts removed
+generated mobile media hook repaired to satisfy the React lint rules and remain SSR-safe
+frontend lint passes
+TypeScript no-emit check passes
+frontend production build passes
+existing diagnostic page renders successfully after the foundation change
+```
+
+##### 9.2 Typed Frontend Data Boundary
+
+```text
+define shared TypeScript types for Gmail connection, sync jobs, ask responses, and email sources
+centralize authenticated FastAPI requests instead of duplicating session and fetch logic
+preserve the existing Supabase SSR session and browser access-token flow
+map sanitized backend failures into stable frontend states
+do not log or render access tokens, Gmail tokens, OAuth state, or authorization codes
+verify type checking, lint, and production build
+```
+
+This slice changes data plumbing without changing the approved appearance.
+
+Status:
+
+```text
+complete locally
+shared TypeScript contracts now mirror the FastAPI ask, Gmail connection, sync-job, sync-status, and email-source responses
+one client-only API boundary now owns Supabase session lookup and authenticated FastAPI requests
+the existing Supabase server getUser and proxy-based session-refresh flow remains unchanged
+the access token remains local to request construction, and the shared boundary always overwrites the Authorization header
+authenticated responses use no-store caching and endpoint-specific runtime decoders
+runtime decoders return only approved fields instead of passing arbitrary response properties into components
+the Gmail authorization URL is accepted only from the Google Accounts HTTPS host and is used only for immediate navigation
+HTTP, session, network, configuration, and malformed-response failures map to fixed sanitized frontend states
+backend error response bodies are not rendered, logged, or propagated into UI errors
+sync-job error text is restricted to the backend's documented safe-message allowlist, with a generic fallback
+the existing diagnostic ask, Gmail-connect, and sync controls now use the shared boundary with no visual redesign
+frontend lint passes
+TypeScript no-emit check passes
+frontend production build passes
+```
+
+##### 9.3 Signed-Out Experience
+
+Before implementation, confirm the final monochrome logo, test-user wording,
+and GitHub URL. Then build:
+
+```text
+centered desktop sign-in composition
+GmailRAG brand mark and wordmark
+short product description
+official Google sign-in button
+sanitized sign-in error state
+test-user notice
+GitHub portfolio link
+```
+
+Manual checkpoint: sign in with Google, complete the Supabase callback, refresh
+the browser, and confirm the session remains signed in.
+
+Implementation status:
+
+```text
+complete locally; real Google sign-in and refresh-persistence checkpoint pending
+signed-out users now receive a centered desktop-only monochrome composition based on the approved Figma direction
+the supplied outlined-circle direction is used as the decorative GmailRAG mark with the GmailRAG wordmark
+the approved product description and test-user contact notice are present
+the portfolio link targets the repository confirmed by the Git remote: https://github.com/tommy898/GmailRAG
+the sign-in action uses Google's official current neutral Sign in with Google PNG asset without recoloring or distortion
+the official Google asset is the only multicolor branding exception on the signed-out screen
+the existing Supabase Google OAuth and callback architecture remains unchanged
+the sign-in control disables after activation and exposes a safe Redirecting to Google status
+client-side Supabase failures render one fixed safe message instead of provider error text
+only missing_auth_code and auth_callback_failed query codes map to a fixed callback message; unknown query values are ignored
+the document title and description now identify GmailRAG instead of Create Next App
+the existing authenticated diagnostic branch remains in place and functionally unchanged
+normal, allowlisted callback-error, and unknown-error signed-out states were visually checked in the browser
+frontend lint passes
+TypeScript no-emit check passes
+frontend production build passes
+```
+
+##### 9.4 Authenticated Desktop Shell
+
+```text
+header with approved branding
+main question-and-answer workspace region
+fixed desktop right sidebar
+signed-in email identity
+Gmail connection-status text
+last-synchronized value
+locations for Connect Gmail, Sync Gmail, and Log out actions
+approved disconnected, not-synced, syncing, ready, and failed shell states
+```
+
+This slice establishes layout and state placement before wiring every action.
+Manual checkpoint: compare the signed-in shell with the approved Figma visual
+direction at the target desktop viewport.
+
+##### 9.5 Gmail Connection And Synchronization
+
+```text
+wire Connect Gmail to the existing authenticated Gmail OAuth start flow
+preserve sanitized callback success and error messages
+wire Sync Gmail to POST /gmail/sync
+load state from GET /sync/status
+poll only while the current job is pending or running, then stop
+disable the sync button and show Syncing... while active
+show Gmail connected or Gmail not connected using approved semantic tokens
+show last synchronization time and safe failure messages
+```
+
+Manual checkpoint: test disconnected, connected/not-synced, syncing, ready,
+and failed behavior with the real backend and worker.
+
+##### 9.6 Latest Question And Answer Workspace
+
+```text
+add only the approved Vercel AI Elements presentation pieces
+keep a text-only prompt and submit action
+remove model selection, attachments, speech, emoji, web search, branching, and editing
+call the existing authenticated POST /ask endpoint
+present only the latest independent question and answer
+show asking, answer, empty, and sanitized error states
+do not introduce conversational-memory claims or AI SDK transport
+```
+
+Manual checkpoint: ask one real indexed-email question and verify that the
+answer comes from the existing FastAPI/Gemini pipeline.
+
+##### 9.7 Email Evidence Presentation
+
+```text
+render a Sources section directly beneath the latest answer
+compose EmailSourceItem rows from approved shadcn/ui primitives
+show subject, sender email, date, and matching excerpt
+hide retrieval scores and chunk identifiers
+show a clear no-sources state when the source array is empty
+verify long subjects, missing optional metadata, and long excerpts
+```
+
+Manual checkpoint: verify a grounded answer with sources and an answer with an
+empty source list.
+
+##### 9.8 State Coverage, Accessibility, And Cleanup
+
+```text
+verify keyboard navigation, visible focus, labels, status announcements, and alert announcements
+verify disabled and loading controls cannot submit duplicate requests
+verify every OAuth, sync, and ask state uses shared components and tokens
+replace temporary raw JSON and diagnostic copy
+remove ask-test-form and sync-test-panel only after production replacements pass
+remove unused dependencies and dead frontend code
+verify no secret or token appears in markup, URLs, logs, or error messages
+run frontend lint and production build
+```
+
+Final manual checkpoint:
+
+```text
+visit signed out
+sign in with Google
+connect the matching Gmail account
+start and finish synchronization
+ask a question
+read the answer and source-email items
+refresh and confirm the Supabase session persists
+log out and confirm protected controls disappear
 ```
 
 Completion criteria:
@@ -592,7 +898,7 @@ frontend deployed on Vercel
 user can sign in
 user can trigger Gmail sync
 user can ask a question
-answer and source cards render correctly
+answer and source items render correctly
 ```
 
 ### Milestone 10: Deployment And Polish

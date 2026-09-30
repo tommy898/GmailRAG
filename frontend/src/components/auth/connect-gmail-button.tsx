@@ -2,15 +2,10 @@
 
 import { useState } from "react";
 
-import { createClient } from "@/lib/supabase/client";
-
-type GmailConnectResponse = {
-  authorization_url: string;
-};
-
-type ErrorResponse = {
-  detail?: string;
-};
+import {
+  beginGmailConnection,
+  getApiErrorMessage,
+} from "@/lib/api/client";
 
 export function ConnectGmailButton() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -21,54 +16,15 @@ export function ConnectGmailButton() {
     setIsLoading(true);
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const body = await beginGmailConnection();
 
-      if (!apiUrl) {
-        throw new Error("NEXT_PUBLIC_API_URL is not set");
-      }
-
-      const supabase = createClient();
-      const {
-        data: { session },
-        error: sessionError,
-      } = await supabase.auth.getSession();
-
-      if (sessionError) {
-        throw sessionError;
-      }
-
-      if (!session) {
-        throw new Error("No Supabase session found");
-      }
-
-      const response = await fetch(`${apiUrl}/gmail/connect`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      const body = (await response.json()) as
-        | GmailConnectResponse
-        | ErrorResponse;
-
-      if (!response.ok) {
-        const message =
-          "detail" in body && body.detail
-            ? body.detail
-            : "Could not start Gmail authorization";
-
-        throw new Error(message);
-      }
-
-      window.location.assign(
-        (body as GmailConnectResponse).authorization_url,
-      );
+      window.location.assign(body.authorization_url);
     } catch (error) {
       setErrorMessage(
-        error instanceof Error
-          ? error.message
-          : "Could not start Gmail authorization",
+        getApiErrorMessage(
+          error,
+          "Gmail authorization could not be started.",
+        ),
       );
       setIsLoading(false);
     }
