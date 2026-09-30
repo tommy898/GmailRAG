@@ -8,9 +8,11 @@ from app.sync_jobs import (
     GmailAccountNotConnectedError,
     SyncJobStateError,
     claim_next_gmail_sync_job,
+    claim_gmail_sync_job,
     complete_gmail_sync_job,
     enqueue_gmail_sync_job,
     fail_gmail_sync_job,
+    recover_interrupted_gmail_sync_job,
 )
 
 
@@ -148,6 +150,49 @@ class GmailSyncJobLifecycleTests(unittest.TestCase):
         self.cursor = MagicMock()
         self.connection_context.__enter__.return_value = self.connection
         self.connection.cursor.return_value.__enter__.return_value = self.cursor
+
+    @patch("app.sync_jobs.get_connection")
+    def test_exact_claim_filters_job_id_and_only_claims_pending(self, get_connection):
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.return_value = (self.job_id, self.gmail_account_id)
+        result = claim_gmail_sync_job(self.job_id)
+        self.assertEqual(result, ClaimedGmailSyncJob(self.job_id, self.gmail_account_id))
+        query, parameters = self.cursor.execute.call_args_list[0].args
+        normalized = " ".join(query.split())
+        self.assertIn("and id = %s", normalized)
+        self.assertIn("and status = 'pending'", normalized)
+        self.assertIn("for update skip locked", normalized)
+        self.assertEqual(parameters, (self.job_id,))
+        self.assertEqual(self.cursor.execute.call_args_list[1].args[1], (self.gmail_account_id,))
+
+    @patch("app.sync_jobs.get_connection")
+    def test_duplicate_or_missing_target_does_not_change_account(self, get_connection):
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.return_value = None
+        self.assertIsNone(claim_gmail_sync_job(self.job_id))
+        self.assertEqual(self.cursor.execute.call_count, 1)
+
+    @patch("app.sync_jobs.get_connection")
+    def test_recovery_marks_failed_without_rewinding_checkpoint_or_deleting_data(self, get_connection):
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.return_value = (self.gmail_account_id,)
+        recover_interrupted_gmail_sync_job(self.job_id)
+        query, parameters = self.cursor.execute.call_args_list[0].args
+        self.assertEqual(parameters, (self.job_id,))
+        self.assertIn("status = 'running'", query)
+        self.assertIn("status = 'failed'", query)
+        self.assertEqual(self.cursor.execute.call_args_list[1].args[1], (self.gmail_account_id,))
+        for call in self.cursor.execute.call_args_list:
+            self.assertNotIn("last_history_id", call.args[0])
+            self.assertNotIn("delete", call.args[0].lower())
+
+    @patch("app.sync_jobs.get_connection")
+    def test_recovery_rejects_jobs_that_are_not_running(self, get_connection):
+        get_connection.return_value = self.connection_context
+        self.cursor.fetchone.return_value = None
+        with self.assertRaises(SyncJobStateError):
+            recover_interrupted_gmail_sync_job(self.job_id)
+        self.assertEqual(self.cursor.execute.call_count, 1)
 
     @patch("app.sync_jobs.get_connection")
     def test_claim_returns_none_when_queue_is_empty(self, get_connection):

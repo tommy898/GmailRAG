@@ -1,6 +1,7 @@
 """Environment configuration with errors that never include supplied values."""
 
 import os
+import re
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -27,6 +28,25 @@ def is_production() -> bool:
     if environment not in {"development", "production"}:
         raise ConfigurationError("APP_ENV must be development or production")
     return environment == "production"
+
+
+def get_sync_dispatch_mode() -> str:
+    mode = os.environ.get(
+        "GMAIL_SYNC_DISPATCH", "cloud_run" if is_production() else "local"
+    )
+    if mode not in {"local", "cloud_run"} or (is_production() and mode != "cloud_run"):
+        raise ConfigurationError("GMAIL_SYNC_DISPATCH must be cloud_run in production, or local in development")
+    return mode
+
+
+def get_cloud_run_job_name() -> str:
+    parts = []
+    for name in ("CLOUD_RUN_PROJECT", "CLOUD_RUN_REGION", "CLOUD_RUN_JOB"):
+        value = get_required_environment_variable(name)
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,62}", value):
+            raise ConfigurationError(f"{name} must be a valid resource identifier")
+        parts.append(value)
+    return f"projects/{parts[0]}/locations/{parts[1]}/jobs/{parts[2]}"
 
 
 def validate_web_url(name: str, value: str, *, origin_only: bool = False) -> str:
@@ -115,7 +135,13 @@ def validate_production_configuration(role: Literal["api", "worker"]) -> None:
         raise ConfigurationError("DATABASE_URL must specify a host and database")
     # Supabase pooler usernames append .PROJECT_REF to the PostgreSQL role.
     database_role = database.get("user", "").split(".", 1)[0]
-    if not database_role or database_role in ADMIN_DATABASE_ROLES:
+    if not database_role or (
+        database_role in ADMIN_DATABASE_ROLES
+        and not (
+            database_role == "postgres"
+            and os.environ.get("ALLOW_ADMIN_DATABASE_FOR_PRIVATE_DEMO") == "true"
+        )
+    ):
         raise ConfigurationError(
             "DATABASE_URL must use a dedicated non-admin runtime account in production"
         )
@@ -130,6 +156,8 @@ def validate_production_configuration(role: Literal["api", "worker"]) -> None:
         raise ConfigurationError("TOKEN_ENCRYPTION_KEY is invalid") from None
 
     if role == "api":
+        if get_sync_dispatch_mode() == "cloud_run":
+            get_cloud_run_job_name()
         get_frontend_url()
         get_supabase_url()
         redirect = validate_web_url(

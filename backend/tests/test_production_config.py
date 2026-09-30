@@ -27,6 +27,9 @@ def production_environment() -> dict[str, str]:
         "TOKEN_ENCRYPTION_KEY": Fernet.generate_key().decode(),
         "GOOGLE_REDIRECT_URI": "https://api.example/gmail/callback",
         "FRONTEND_URL": "https://frontend.example/",
+        "CLOUD_RUN_PROJECT": "gmailrag-501319",
+        "CLOUD_RUN_REGION": "us-west1",
+        "CLOUD_RUN_JOB": "gmailrag-sync",
     }
 
 
@@ -131,6 +134,30 @@ class ProductionConfigurationTests(unittest.TestCase):
         }, clear=True):
             validate_production_configuration("api")
             validate_production_configuration("worker")
+
+    def test_private_demo_admin_exception_requires_explicit_opt_in(self):
+        env = self.environment | {
+            "DATABASE_URL": "postgresql://postgres.PROJECT_REF:private-password@pooler.example/postgres?sslmode=require",
+        }
+        for value in ("false", "1", "TRUE", ""):
+            with patch.dict(os.environ, env | {"ALLOW_ADMIN_DATABASE_FOR_PRIVATE_DEMO": value}, clear=True):
+                with self.assertRaisesRegex(ConfigurationError, "non-admin"):
+                    validate_production_configuration("api")
+        with patch.dict(os.environ, env | {"ALLOW_ADMIN_DATABASE_FOR_PRIVATE_DEMO": "true"}, clear=True):
+            validate_production_configuration("api")
+            validate_production_configuration("worker")
+        for role in ("supabase_admin", "service_role"):
+            with patch.dict(os.environ, env | {
+                "ALLOW_ADMIN_DATABASE_FOR_PRIVATE_DEMO": "true",
+                "DATABASE_URL": f"postgresql://{role}:password@pooler.example/postgres?sslmode=require",
+            }, clear=True):
+                with self.assertRaisesRegex(ConfigurationError, "non-admin"):
+                    validate_production_configuration("api")
+
+    def test_production_cannot_silently_disable_hosted_dispatch(self):
+        with patch.dict(os.environ, self.environment | {"GMAIL_SYNC_DISPATCH": "local"}, clear=True):
+            with self.assertRaisesRegex(ConfigurationError, "GMAIL_SYNC_DISPATCH"):
+                validate_production_configuration("api")
 
     def test_parser_errors_do_not_expose_credentials_in_traceback(self):
         for name, value in (

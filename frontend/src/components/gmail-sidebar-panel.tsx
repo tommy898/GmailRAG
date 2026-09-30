@@ -9,6 +9,7 @@ import {
   startGmailSync,
 } from "@/lib/api/client";
 import type { GmailSyncStatusResponse } from "@/lib/api/types";
+import { getGmailSyncAction, PENDING_LAUNCH_RETRY_DELAY_MS } from "@/lib/api/sync-action";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -42,6 +43,7 @@ export function GmailSidebarPanel() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
+  const [retryablePendingJobId, setRetryablePendingJobId] = useState<string | null>(null);
   const actionInFlight = useRef(false);
 
   const refreshStatus = useCallback(async () => {
@@ -89,6 +91,20 @@ export function GmailSidebarPanel() {
 
   const activeJobId = hasActiveJob(status) ? status?.job?.job_id : null;
   const activeJobStatus = hasActiveJob(status) ? status?.job?.status : null;
+
+  useEffect(() => {
+    if (!activeJobId || activeJobStatus !== "pending") {
+      return;
+    }
+
+    // A launch timeout can leave a valid pending job. Offer an explicit retry
+    // after a short wait; the backend reuses the ID and claims it only once.
+    const timeoutId = window.setTimeout(
+      () => setRetryablePendingJobId(activeJobId),
+      PENDING_LAUNCH_RETRY_DELAY_MS,
+    );
+    return () => window.clearTimeout(timeoutId);
+  }, [activeJobId, activeJobStatus]);
 
   useEffect(() => {
     if (!activeJobId) {
@@ -173,7 +189,9 @@ export function GmailSidebarPanel() {
       setResultMessage(
         response.created
           ? "Gmail sync was queued."
-          : "An existing Gmail sync is in progress.",
+          : response.status === "pending"
+            ? "Gmail sync launch requested."
+            : "An existing Gmail sync is in progress.",
       );
       await refreshStatus();
     } catch (error) {
@@ -186,7 +204,9 @@ export function GmailSidebarPanel() {
     }
   }
 
-  const isSyncActive = status?.sync_status === "syncing" || hasActiveJob(status);
+  const syncAction = getGmailSyncAction(
+    status, isLoading, isSubmitting, retryablePendingJobId,
+  );
 
   return (
     <section aria-labelledby="gmail-status-heading" className="space-y-8 px-4 py-8 [&_h2]:leading-6 [&_p]:leading-6">
@@ -225,11 +245,11 @@ export function GmailSidebarPanel() {
           <Button
             type="button"
             className="w-full"
-            disabled={isLoading || isSubmitting || isSyncActive}
-            aria-busy={isSubmitting || isSyncActive}
+            disabled={syncAction.disabled}
+            aria-busy={syncAction.busy}
             onClick={handleSync}
           >
-            {isSubmitting || isSyncActive ? "Syncing..." : "Sync Gmail"}
+            {syncAction.label}
           </Button>
         ) : status ? (
           <Button

@@ -12,6 +12,43 @@ from app.worker import (
 
 
 class GmailSyncJobRunnerTests(unittest.TestCase):
+    @patch("app.worker.claim_next_gmail_sync_job")
+    @patch("app.worker.claim_gmail_sync_job")
+    @patch("app.worker.get_gmail_sync_checkpoint")
+    @patch("app.worker.prepare_gmail_sync")
+    @patch("app.worker.process_gmail_message")
+    @patch("app.worker.complete_gmail_sync_job")
+    def test_targeted_job_processes_only_the_claimed_account(
+        self, complete, process, prepare, checkpoint, claim_target, claim_next,
+    ):
+        job = ClaimedGmailSyncJob(uuid.uuid4(), uuid.uuid4())
+        email = {"gmail_message_id": "only-target-account-message"}
+        claim_target.return_value = job
+        checkpoint.return_value = "history-before"
+        prepare.return_value = GmailSyncPlan(
+            "incremental", iter([email]), (), "history-after",
+        )
+        process.return_value = ProcessedGmailMessage(uuid.uuid4(), 2)
+        result = run_next_gmail_sync_job(job_id=job.job_id)
+        self.assertEqual(result, GmailSyncRunResult(job.job_id, "done", 1, 2))
+        claim_target.assert_called_once_with(job.job_id)
+        claim_next.assert_not_called()
+        checkpoint.assert_called_once_with(job.gmail_account_id)
+        prepare.assert_called_once_with(job.gmail_account_id, "history-before", max_messages=None)
+        process.assert_called_once_with(job.gmail_account_id, email)
+        complete.assert_called_once_with(job.job_id, job.gmail_account_id, "history-after")
+
+    @patch("app.worker.prepare_gmail_sync")
+    @patch("app.worker.claim_next_gmail_sync_job")
+    @patch("app.worker.claim_gmail_sync_job")
+    def test_targeted_runner_never_falls_back_to_another_accounts_queue(self, claim_target, claim_next, prepare):
+        job_id = uuid.uuid4()
+        claim_target.return_value = None
+        self.assertIsNone(run_next_gmail_sync_job(job_id=job_id))
+        claim_target.assert_called_once_with(job_id)
+        claim_next.assert_not_called()
+        prepare.assert_not_called()
+
     @patch("app.worker.prepare_gmail_sync")
     @patch("app.worker.claim_next_gmail_sync_job")
     def test_returns_none_without_claimed_job(

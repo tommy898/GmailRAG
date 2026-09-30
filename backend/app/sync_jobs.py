@@ -12,6 +12,7 @@ PUBLIC_SYNC_ERROR_MESSAGES = frozenset(
         "A Gmail message could not be normalized",
         "Gmail messages could not be indexed",
         "Gmail sync failed",
+        "Gmail sync was interrupted; retry synchronization",
     }
 )
 
@@ -200,16 +201,19 @@ def get_gmail_sync_status(profile_id: uuid.UUID) -> GmailSyncStatus:
     )
 
 
-def claim_next_gmail_sync_job() -> ClaimedGmailSyncJob | None:
+def claim_gmail_sync_job(job_id: uuid.UUID | None = None) -> ClaimedGmailSyncJob | None:
+    """Atomically claim an exact pending job, or the oldest for local polling."""
+    selection = "and id = %s" if job_id is not None else ""
     with get_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute(
-                """
+                f"""
                 with next_job as (
                     select id
                     from sync_jobs
                     where job_type = 'gmail_sync'
                       and status = 'pending'
+                      {selection}
                     order by created_at
                     for update skip locked
                     limit 1
@@ -224,7 +228,8 @@ def claim_next_gmail_sync_job() -> ClaimedGmailSyncJob | None:
                 from next_job
                 where job.id = next_job.id
                 returning job.id, job.gmail_account_id
-                """
+                """,
+                (job_id,) if job_id is not None else (),
             )
             claimed_job = cursor.fetchone()
 
@@ -247,6 +252,38 @@ def claim_next_gmail_sync_job() -> ClaimedGmailSyncJob | None:
         job_id=job_id,
         gmail_account_id=gmail_account_id,
     )
+
+
+def claim_next_gmail_sync_job() -> ClaimedGmailSyncJob | None:
+    return claim_gmail_sync_job()
+
+
+def recover_interrupted_gmail_sync_job(job_id: uuid.UUID) -> None:
+    """Operator-only recovery AFTER all executions for this job are stopped.
+
+    Mark failed, not pending: delayed old launches must never claim this ID.
+    A user retry creates a new ID; partial writes remain idempotent and the
+    completed history checkpoint is unchanged. No automatic running takeover.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                """
+                update sync_jobs
+                set status = 'failed', finished_at = now(), updated_at = now(),
+                    error_message = 'Gmail sync was interrupted; retry synchronization'
+                where id = %s and job_type = 'gmail_sync' and status = 'running'
+                returning gmail_account_id
+                """,
+                (job_id,),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise SyncJobStateError("Only a running Gmail sync job can be recovered")
+            cursor.execute(
+                "update gmail_accounts set sync_status = 'failed', updated_at = now() where id = %s",
+                (row[0],),
+            )
 
 
 def complete_gmail_sync_job(

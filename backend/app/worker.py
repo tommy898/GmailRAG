@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 from dotenv import load_dotenv
 
-from app.config import ConfigurationError, validate_production_configuration
+from app.config import ConfigurationError, is_production, validate_production_configuration
 from app.db import get_connection
 from app.gmail_accounts import (
     GmailAccountNotFoundError,
@@ -30,8 +30,10 @@ from app.ingestion import (
 )
 from app.sync_jobs import (
     claim_next_gmail_sync_job,
+    claim_gmail_sync_job,
     complete_gmail_sync_job,
     fail_gmail_sync_job,
+    recover_interrupted_gmail_sync_job,
 )
 
 
@@ -119,8 +121,9 @@ def safe_gmail_sync_error_message(error: Exception) -> str:
 def run_next_gmail_sync_job(
     *,
     max_messages: int | None = None,
+    job_id: uuid.UUID | None = None,
 ) -> GmailSyncRunResult | None:
-    job = claim_next_gmail_sync_job()
+    job = claim_next_gmail_sync_job() if job_id is None else claim_gmail_sync_job(job_id)
 
     if job is None:
         return None
@@ -235,35 +238,56 @@ def worker_poll_seconds() -> float:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Run the Gmail sync worker")
-    parser.add_argument(
+    execution = parser.add_mutually_exclusive_group()
+    execution.add_argument(
         "--once",
         action="store_true",
         help="Process at most one pending job and exit",
     )
+    execution.add_argument("--job-id", type=uuid.UUID, help="Process only this pending job and exit")
+    execution.add_argument("--recover-job", type=uuid.UUID, help="Mark an interrupted running job failed; does not sync")
+    parser.add_argument("--confirm-worker-stopped", action="store_true", help="Confirm all executions for the recovery job have terminated")
     arguments = parser.parse_args(argv)
+    if arguments.recover_job and not arguments.confirm_worker_stopped:
+        parser.error("Recovery requires stopping all executions first and --confirm-worker-stopped")
+    if arguments.confirm_worker_stopped and not arguments.recover_job:
+        parser.error("--confirm-worker-stopped requires --recover-job")
     load_dotenv()
     logging.basicConfig(level=logging.INFO)
 
     try:
         validate_production_configuration("worker")
+        if is_production() and not (arguments.job_id or arguments.recover_job):
+            raise ConfigurationError("Hosted worker requires --job-id; polling and --once are development-only")
     except ConfigurationError as exc:
         logger.error("Worker configuration invalid: %s", exc)
         return 1
 
-    if arguments.once:
-        result = run_next_gmail_sync_job()
-
-        if result is None:
-            logger.info("No pending Gmail sync jobs")
-            return 0
-
-        log_gmail_sync_result(result)
-        return 0 if result.status == "done" else 1
-
     try:
+        if arguments.recover_job:
+            recover_interrupted_gmail_sync_job(arguments.recover_job)
+            logger.info("Interrupted Gmail sync job marked failed; retry from the website")
+            return 0
+        if arguments.once or arguments.job_id:
+            result = (
+                run_next_gmail_sync_job(job_id=arguments.job_id)
+                if arguments.job_id else run_next_gmail_sync_job()
+            )
+
+            if result is None:
+                logger.info("No claimable Gmail sync job; execution is a no-op")
+                return 0
+
+            log_gmail_sync_result(result)
+            return 0 if result.status == "done" else 1
+
         run_worker_loop(worker_poll_seconds())
     except KeyboardInterrupt:
         logger.info("Gmail sync worker stopped")
+        return 1 if arguments.job_id else 0
+    except Exception as exc:
+        logger.error("Gmail sync worker stopped at %s", type(exc).__name__)
+        return 1
 
     return 0
 

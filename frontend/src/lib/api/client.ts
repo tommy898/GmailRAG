@@ -63,6 +63,7 @@ const safeSyncErrorMessages = new Set([
   "A Gmail message could not be normalized",
   "Gmail messages could not be indexed",
   "Gmail sync failed",
+  "Gmail sync was interrupted; retry synchronization",
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {

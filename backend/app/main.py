@@ -28,6 +28,7 @@ from app.gmail_oauth import (
     complete_gmail_connection,
 )
 from app.gmail_service import GmailProfileError
+from app.job_dispatch import SyncJobLaunchError, launch_gmail_sync_job
 from app.rag import answer_question
 from app.schemas import (
     AskRequest,
@@ -151,6 +152,18 @@ def create_gmail_sync(
             status_code=status.HTTP_409_CONFLICT,
             detail="Connect Gmail before starting a sync",
         ) from exc
+
+    if job.status == "pending":
+        try:
+            # enqueue commits before returning. Retrying a reused pending job is
+            # intentional, including when the previous launch outcome is unknown.
+            launch_gmail_sync_job(job.job_id)
+        except SyncJobLaunchError:
+            logger.warning("Gmail sync worker launch was not acknowledged")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Sync launch could not be confirmed. Refresh status, then retry Sync Gmail if needed.",
+            ) from None
 
     return GmailSyncResponse(
         job_id=job.job_id,
