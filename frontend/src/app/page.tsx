@@ -1,10 +1,6 @@
-import { AskTestForm } from "@/components/ask-test-form";
-import { SyncTestPanel } from "@/components/sync-test-panel";
-
-import { ConnectGmailButton } from "@/components/auth/connect-gmail-button";
+import { AuthenticatedShell } from "@/components/authenticated-shell";
 import { SignedOutScreen } from "@/components/auth/signed-out-screen";
 import { createClient } from "@/lib/supabase/server";
-import { SignOutButton } from "@/components/auth/sign-out-button";
 
 type HomeProps = {
   searchParams: Promise<{
@@ -53,23 +49,10 @@ export default async function Home({ searchParams }: HomeProps) {
   }
 
   return (
-    <main>
-      <h1>GmailRAG</h1>
-      {gmailStatus === "connected" ? (
-        <p role="status">
-          Gmail connected. Email syncing will be added next.
-        </p>
-      ) : null}
-
-      {gmailErrorMessage ? (
-        <p role="alert">{gmailErrorMessage}</p>
-      ) : null}
-
-      <p>Signed in as {user.email}</p>
-      <SignOutButton />
-      <ConnectGmailButton />
-      <SyncTestPanel />
-      <AskTestForm />
-    </main>
+    <AuthenticatedShell
+      email={user.email ?? "Account email unavailable"}
+      gmailConnected={gmailStatus === "connected"}
+      gmailErrorMessage={gmailErrorMessage}
+    />
   );
 }
