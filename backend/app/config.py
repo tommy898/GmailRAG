@@ -12,6 +12,9 @@ class ConfigurationError(RuntimeError):
     pass
 
 
+ADMIN_DATABASE_ROLES = frozenset({"postgres", "supabase_admin", "service_role"})
+
+
 def get_required_environment_variable(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value:
@@ -110,6 +113,12 @@ def validate_production_configuration(role: Literal["api", "worker"]) -> None:
         raise ConfigurationError("DATABASE_URL is invalid") from None
     if not database.get("host") or not database.get("dbname"):
         raise ConfigurationError("DATABASE_URL must specify a host and database")
+    # Supabase pooler usernames append .PROJECT_REF to the PostgreSQL role.
+    database_role = database.get("user", "").split(".", 1)[0]
+    if not database_role or database_role in ADMIN_DATABASE_ROLES:
+        raise ConfigurationError(
+            "DATABASE_URL must use a dedicated non-admin runtime account in production"
+        )
     if database.get("sslmode") not in {"require", "verify-ca", "verify-full"}:
         raise ConfigurationError(
             "DATABASE_URL must explicitly require SSL in production"

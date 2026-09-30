@@ -113,6 +113,25 @@ class ProductionConfigurationTests(unittest.TestCase):
                         validate_production_configuration("api")
                     self.assertEqual(os.environ["DATABASE_URL"], database_url)
 
+    def test_production_rejects_admin_database_accounts(self):
+        for role in ("postgres", "postgres.PROJECT_REF", "supabase_admin", "service_role.PROJECT_REF"):
+            with self.subTest(role=role):
+                environment = self.environment | {
+                    "DATABASE_URL": f"postgresql://{role}:private-password@pooler.example/postgres?sslmode=require"
+                }
+                with patch.dict(os.environ, environment, clear=True):
+                    with self.assertRaisesRegex(ConfigurationError, "non-admin"):
+                        validate_production_configuration("api")
+                    with self.assertRaisesRegex(ConfigurationError, "non-admin"):
+                        validate_production_configuration("worker")
+
+    def test_development_still_accepts_existing_admin_connection(self):
+        with patch.dict(os.environ, {
+            "DATABASE_URL": "postgresql://postgres:private-password@pooler.example/postgres"
+        }, clear=True):
+            validate_production_configuration("api")
+            validate_production_configuration("worker")
+
     def test_parser_errors_do_not_expose_credentials_in_traceback(self):
         for name, value in (
             ("DATABASE_URL", "postgresql://private-password@host/db?invalid-secret-option=value"),

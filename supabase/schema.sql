@@ -185,3 +185,33 @@ alter table sync_jobs enable row level security;
 alter table queries enable row level security;
 alter table answers enable row level security;
 alter table answer_sources enable row level security;
+
+-- Browser clients use Supabase Auth, never these application tables directly.
+-- RLS does not cover whole-table privileges such as TRUNCATE/REFERENCES.
+revoke all privileges on table
+    public.profiles,
+    public.gmail_accounts,
+    public.emails,
+    public.email_chunks,
+    public.email_embeddings,
+    public.sync_jobs,
+    public.queries,
+    public.answers,
+    public.answer_sources
+from public, anon, authenticated;
+
+revoke create on schema public from public, anon, authenticated;
+revoke all privileges on function public.handle_new_user()
+    from public, anon, authenticated;
+grant execute on function public.handle_new_user() to supabase_auth_admin;
+
+alter default privileges for role postgres in schema public
+    revoke all privileges on tables from public, anon, authenticated;
+alter default privileges for role postgres in schema public
+    revoke all privileges on sequences from public, anon, authenticated;
+alter default privileges for role postgres in schema public
+    revoke execute on functions from anon, authenticated;
+-- Global PUBLIC function defaults cannot be revoked per schema. This applies
+-- to future postgres-created functions; explicit grants belong in migrations.
+alter default privileges for role postgres
+    revoke execute on functions from public;
