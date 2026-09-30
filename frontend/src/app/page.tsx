@@ -1,4 +1,5 @@
 import { AskTestForm } from "@/components/ask-test-form";
+import { SyncTestPanel } from "@/components/sync-test-panel";
 
 import { ConnectGmailButton } from "@/components/auth/connect-gmail-button";
 import { SignInButton } from "@/components/auth/sign-in-button";
@@ -56,6 +57,7 @@ export default async function Home({ searchParams }: HomeProps) {
         <p>Signed in as {user.email}</p>
         <SignOutButton />
         <ConnectGmailButton />
+        <SyncTestPanel />
         <AskTestForm />
        </>
       ) : (

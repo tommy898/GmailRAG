@@ -196,6 +196,57 @@ class GmailSyncJobRunnerTests(unittest.TestCase):
             "history-201",
         )
 
+    @patch("app.worker.logger.info")
+    @patch("app.worker.complete_gmail_sync_job")
+    @patch("app.worker.fail_gmail_sync_job")
+    @patch("app.worker.process_gmail_message")
+    @patch("app.worker.prepare_gmail_sync")
+    @patch("app.worker.get_gmail_sync_checkpoint")
+    @patch("app.worker.claim_next_gmail_sync_job")
+    def test_logs_safe_progress_every_one_hundred_messages(
+        self,
+        claim_next_job,
+        get_checkpoint,
+        prepare_sync,
+        process_message,
+        fail_job,
+        complete_job,
+        log_info,
+    ):
+        job = ClaimedGmailSyncJob(uuid.uuid4(), uuid.uuid4())
+        emails = [
+            {"gmail_message_id": f"message-{index}"}
+            for index in range(100)
+        ]
+        claim_next_job.return_value = job
+        get_checkpoint.return_value = "history-100"
+        prepare_sync.return_value = GmailSyncPlan(
+            mode="incremental",
+            messages=iter(emails),
+            deleted_message_ids=(),
+            next_history_id="history-200",
+        )
+        process_message.return_value = ProcessedGmailMessage(
+            uuid.uuid4(),
+            2,
+        )
+
+        result = run_next_gmail_sync_job()
+
+        self.assertEqual(result.status, "done")
+        log_info.assert_called_once_with(
+            "Gmail sync job %s progress messages=%s chunks=%s",
+            job.job_id,
+            100,
+            200,
+        )
+        fail_job.assert_not_called()
+        complete_job.assert_called_once_with(
+            job.job_id,
+            job.gmail_account_id,
+            "history-200",
+        )
+
     @patch("app.worker.complete_gmail_sync_job")
     @patch("app.worker.fail_gmail_sync_job")
     @patch("app.worker.process_gmail_message")

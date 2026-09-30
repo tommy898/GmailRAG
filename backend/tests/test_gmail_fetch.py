@@ -165,6 +165,13 @@ class GmailMessageDownloadTests(unittest.TestCase):
             num_retries=GMAIL_API_NUM_RETRIES
         )
 
+    def test_download_uses_extended_retry_budget_for_rate_limits(self):
+        self.get_request.execute.return_value = {"id": "message-1"}
+
+        get_gmail_message(self.service, "message-1")
+
+        self.get_request.execute.assert_called_once_with(num_retries=8)
+
     def test_invalid_download_is_rejected(self):
         self.get_request.execute.return_value = {"threadId": "thread-1"}
 

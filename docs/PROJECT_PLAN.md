@@ -485,17 +485,27 @@ GET /sync/status returns only the authenticated profile's connection and latest 
 unknown database error text is replaced with a safe public message before reaching the browser
 python -m app.worker runs the polling worker and --once processes at most one queued job
 8.9 initial and incremental Gmail synchronization complete
-the first uncapped job performs a full mailbox import and saves last_history_id only after success
+the first job imports the latest 1000 Gmail messages and saves last_history_id only after success
 later jobs use Gmail history to upsert added/restored messages and delete removed, spam, or trashed messages
-an expired Gmail history checkpoint automatically falls back to a reconciled full mailbox import
+an expired Gmail history checkpoint automatically falls back to a reconciled import of the latest 1000 messages
 failed and capped diagnostic runs do not advance the checkpoint, so unprocessed changes cannot be skipped
 8.10 synchronization security and reliability hardening complete
-Gmail list, download, profile, and history requests use three transient-failure retries with exponential backoff
+Gmail list, download, profile, and history requests use eight transient-failure retries with exponential backoff
 message and history pagination reject repeated tokens instead of looping forever
 malformed messages fail safely without advancing last_history_id, allowing an idempotent retry
 email upserts, chunk replacement, and embedding upserts prevent duplicate derived data on retry
 account-scoped deletes, active-job reuse, encrypted refreshed tokens, and sanitized failures have regression coverage
-117 backend tests pass across authentication, OAuth, indexing, Gmail synchronization, retries, isolation, and status reporting
+8.11 live end-to-end verification complete
+the first live full-mailbox run exposed an unbounded initial import and was stopped safely
+normal initial synchronization is now limited to the latest 1000 Gmail messages and still saves last_history_id after success
+later synchronization continues through Gmail History instead of repeating the initial 1000-message import
+message downloads are paced at no more than four request starts per second and retain exponential-backoff retries
+the worker logs sanitized progress every 100 messages
+the interrupted cache was safely cleared and compacted from roughly 375 MB to 12 MB before retesting
+the corrected initial sync completed with 1000 emails, 4263 chunks, 4263 embeddings, a saved history checkpoint, and a 37 MB database
+the follow-up incremental sync completed with zero changes and preserved all counts
+the authenticated ask flow returned a grounded answer with Gmail sources after synchronization
+122 backend tests pass across authentication, OAuth, indexing, Gmail synchronization, retries, isolation, and status reporting
 ```
 
 Build:
@@ -598,7 +608,7 @@ Render worker deployment
 Supabase database
 Google OAuth configured
 environment variables documented
-README updated
+README updated by the project owner only
 architecture diagram
 demo screenshots
 privacy/security notes
@@ -623,6 +633,13 @@ connect Gmail
 sync emails
 ask a question
 receive a grounded answer with sources
+```
+
+Documentation ownership:
+
+```text
+README files are written and maintained only by the project owner.
+Agent-authored project progress and implementation notes belong in docs/PROJECT_PLAN.md.
 ```
 
 ## V1 Scope

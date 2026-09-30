@@ -2,6 +2,7 @@ import base64
 import binascii
 import os
 import re
+import time
 import uuid
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -29,7 +30,12 @@ from app.token_crypto import decrypt_token, encrypt_token
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GOOGLE_TOKEN_URI = "https://oauth2.googleapis.com/token"
 EXCLUDED_GMAIL_LABEL_IDS = frozenset({"SPAM", "TRASH"})
-GMAIL_API_NUM_RETRIES = 3
+INITIAL_GMAIL_SYNC_MAX_MESSAGES = 1000
+GMAIL_MESSAGE_REQUEST_INTERVAL_SECONDS = 0.25
+# A full mailbox import can run long enough to encounter Gmail's transient
+# per-user rate limit. Give the Google client enough exponential-backoff
+# attempts to wait through the throttle instead of failing the entire job.
+GMAIL_API_NUM_RETRIES = 8
 
 
 class GmailProfileError(Exception):
@@ -729,8 +735,23 @@ def normalize_gmail_message(message: dict[str, Any]) -> dict[str, object]:
 def iter_normalized_messages_by_id(
     service,
     message_ids: Iterator[str],
+    *,
+    request_interval_seconds: float = GMAIL_MESSAGE_REQUEST_INTERVAL_SECONDS,
 ) -> Iterator[dict[str, object]]:
+    if request_interval_seconds < 0:
+        raise ValueError("request_interval_seconds cannot be negative")
+
+    last_request_started_at: float | None = None
+
     for message_id in message_ids:
+        if last_request_started_at is not None:
+            elapsed = time.monotonic() - last_request_started_at
+            remaining_delay = request_interval_seconds - elapsed
+
+            if remaining_delay > 0:
+                time.sleep(remaining_delay)
+
+        last_request_started_at = time.monotonic()
         message = get_gmail_message(service, message_id)
         label_ids = message.get("labelIds", [])
 
@@ -748,7 +769,8 @@ def iter_normalized_messages_by_id(
 def prepare_full_gmail_sync(
     service,
     *,
-    max_messages: int | None = None,
+    max_messages: int = INITIAL_GMAIL_SYNC_MAX_MESSAGES,
+    advance_checkpoint: bool = True,
 ) -> GmailSyncPlan:
     checkpoint = get_current_gmail_history_id(service)
     message_ids = iter_gmail_message_ids(
@@ -760,7 +782,7 @@ def prepare_full_gmail_sync(
         mode="full",
         messages=iter_normalized_messages_by_id(service, message_ids),
         deleted_message_ids=(),
-        next_history_id=checkpoint if max_messages is None else None,
+        next_history_id=checkpoint if advance_checkpoint else None,
     )
 
 
@@ -811,9 +833,17 @@ def prepare_gmail_sync(
         except GmailHistoryExpiredError:
             pass
 
+    if max_messages is None:
+        return prepare_full_gmail_sync(
+            service,
+            max_messages=INITIAL_GMAIL_SYNC_MAX_MESSAGES,
+            advance_checkpoint=True,
+        )
+
     return prepare_full_gmail_sync(
         service,
         max_messages=max_messages,
+        advance_checkpoint=False,
     )
 
 

@@ -35,6 +35,7 @@ from app.sync_jobs import (
 
 
 logger = logging.getLogger(__name__)
+SYNC_PROGRESS_LOG_INTERVAL = 100
 
 
 @dataclass(frozen=True)
@@ -148,6 +149,14 @@ def run_next_gmail_sync_job(
             messages_processed += 1
             chunks_indexed += processed.chunk_count
             processed_message_ids.append(str(email["gmail_message_id"]))
+
+            if messages_processed % SYNC_PROGRESS_LOG_INTERVAL == 0:
+                logger.info(
+                    "Gmail sync job %s progress messages=%s chunks=%s",
+                    job.job_id,
+                    messages_processed,
+                    chunks_indexed,
+                )
 
         if sync_plan.mode == "full" and max_messages is None:
             reconcile_full_gmail_sync(

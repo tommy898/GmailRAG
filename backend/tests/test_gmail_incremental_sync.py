@@ -6,6 +6,7 @@ from googleapiclient.errors import HttpError
 
 from app.gmail_service import (
     GMAIL_API_NUM_RETRIES,
+    INITIAL_GMAIL_SYNC_MAX_MESSAGES,
     GmailApiError,
     GmailHistoryChanges,
     GmailHistoryExpiredError,
@@ -221,6 +222,7 @@ class GmailSyncPlanningTests(unittest.TestCase):
             iter_normalized_messages_by_id(
                 service,
                 iter(["still-spam", "restored"]),
+                request_interval_seconds=0,
             )
         )
 
@@ -245,6 +247,48 @@ class GmailSyncPlanningTests(unittest.TestCase):
         self.assertEqual(plan.mode, "full")
         self.assertEqual(plan.next_history_id, "history-100")
         self.assertEqual(list(plan.messages), [])
+        iter_message_ids.assert_called_once_with(
+            service,
+            max_messages=INITIAL_GMAIL_SYNC_MAX_MESSAGES,
+        )
+
+    @patch("app.gmail_service.time.sleep")
+    @patch("app.gmail_service.time.monotonic")
+    @patch("app.gmail_service.get_gmail_message")
+    def test_message_downloads_are_paced_without_sleeping_unnecessarily(
+        self,
+        get_message,
+        monotonic,
+        sleep,
+    ):
+        service = MagicMock()
+        get_message.side_effect = [
+            {"id": "message-1", "payload": {}},
+            {"id": "message-2", "payload": {}},
+        ]
+        monotonic.side_effect = [0.0, 0.10, 0.25]
+
+        messages = list(
+            iter_normalized_messages_by_id(
+                service,
+                iter(["message-1", "message-2"]),
+                request_interval_seconds=0.25,
+            )
+        )
+
+        self.assertEqual(len(messages), 2)
+        sleep.assert_called_once()
+        self.assertAlmostEqual(sleep.call_args.args[0], 0.15)
+
+    def test_negative_message_request_interval_is_rejected(self):
+        with self.assertRaises(ValueError):
+            list(
+                iter_normalized_messages_by_id(
+                    MagicMock(),
+                    iter([]),
+                    request_interval_seconds=-0.01,
+                )
+            )
 
     @patch("app.gmail_service.list_gmail_history_changes")
     def test_capped_incremental_sync_does_not_advance_checkpoint(
@@ -307,7 +351,37 @@ class GmailSyncPlanningTests(unittest.TestCase):
         )
         prepare_full.assert_called_once_with(
             service,
-            max_messages=None,
+            max_messages=INITIAL_GMAIL_SYNC_MAX_MESSAGES,
+            advance_checkpoint=True,
+        )
+
+    @patch("app.gmail_service.prepare_full_gmail_sync")
+    @patch("app.gmail_service.build_gmail_api_service")
+    @patch("app.gmail_service.get_authorized_gmail_credentials")
+    def test_explicit_diagnostic_cap_does_not_advance_full_checkpoint(
+        self,
+        get_credentials,
+        build_service,
+        prepare_full,
+    ):
+        gmail_account_id = uuid.uuid4()
+        service = MagicMock()
+        expected_plan = MagicMock()
+        build_service.return_value = service
+        prepare_full.return_value = expected_plan
+
+        plan = prepare_gmail_sync(
+            gmail_account_id,
+            None,
+            max_messages=25,
+        )
+
+        self.assertIs(plan, expected_plan)
+        get_credentials.assert_called_once_with(gmail_account_id)
+        prepare_full.assert_called_once_with(
+            service,
+            max_messages=25,
+            advance_checkpoint=False,
         )
 
 
