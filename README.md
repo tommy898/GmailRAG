@@ -10,7 +10,7 @@ Please contact tzzhao@cs.washington.edu
 
 ### Video Demo
 
-[![GmailRAG Vid](https://youtu.be/groqkXFVnO0)](https://youtu.be/groqkXFVnO0)
+[![GmailRAG Video Demo](https://img.youtube.com/vi/groqkXFVnO0/hqdefault.jpg)](https://youtu.be/groqkXFVnO0)
 
 ### Tech Stack
 
