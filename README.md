@@ -8,6 +8,10 @@ GmailRAG is a web application that lets a user sign in, authorize read-only Gmai
 I will have to add test user in order to access the web app.
 Please contact tzzhao@cs.washington.edu
 
+### Video Demo
+
+[![GmailRAG Demo](https://youtu.be/groqkXFVnO0)
+
 ### Tech Stack
 
 Frontend: Next.js, React, TypeScript, Tailwind CSS
