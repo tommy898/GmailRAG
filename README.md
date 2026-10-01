@@ -14,16 +14,16 @@ Please contact tzzhao@cs.washington.edu
 
 ### Tech Stack
 
-Frontend: Next.js, React, TypeScript, Tailwind CSS
-UI: shadcn/ui and Vercel AI Elements
-Backend: Python, FastAPI
-Database: Supabase PostgreSQL + pgvector
-Authentication: Supabase Auth with Google sign-in
-Gmail Access: Google OAuth and Gmail API
-Embedding: all-MiniLM-L6-v2
-Reranking: ms-marco-MiniLM-L-6-v2
-Answer generation: Gemini API (Flash 3.5)
-Hosting: Vercel, Cloud Run service, Cloud Run Job for worker
+Frontend: Next.js, React, TypeScript, Tailwind CSS<br>
+UI: shadcn/ui and Vercel AI Elements<br>
+Backend: Python, FastAPI<br>
+Database: Supabase PostgreSQL + pgvector<br>
+Authentication: Supabase Auth with Google sign-in<br>
+Gmail Access: Google OAuth and Gmail API<br>
+Embedding: all-MiniLM-L6-v2<br>
+Reranking: ms-marco-MiniLM-L-6-v2<br>
+Answer generation: Gemini API (Flash 3.5)<br>
+Hosting: Vercel, Cloud Run service, Cloud Run Job for worker<br>
 Build and secrets: Cloud Build, Artifact Registry, Secret Manager
 
 ### Architecture
