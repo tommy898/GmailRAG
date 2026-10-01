@@ -139,8 +139,8 @@ class DatabaseSecurityTests(unittest.TestCase):
 class PermissionMigrationTests(unittest.TestCase):
     def setUp(self):
         root = Path(__file__).resolve().parents[2]
-        self.migration = (root / "supabase/migrations/202609300001_harden_client_permissions.sql").read_text()
-        self.schema = (root / "supabase/schema.sql").read_text()
+        self.migration = (root / "backend/db/migrations/202609300001_harden_client_permissions.sql").read_text()
+        self.schema = (root / "backend/db/schema.sql").read_text()
 
     def test_migration_and_fresh_schema_revoke_every_application_table(self):
         for source in (self.migration, self.schema):

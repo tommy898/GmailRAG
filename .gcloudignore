@@ -15,10 +15,10 @@
 !backend/scripts/*.py
 !backend/tests/
 !backend/tests/*.py
-!supabase/
-!supabase/schema.sql
-!supabase/migrations/
-!supabase/migrations/*.sql
+!backend/db/
+!backend/db/schema.sql
+!backend/db/migrations/
+!backend/db/migrations/*.sql
 !.dockerignore
 !.gcloudignore
 **/.env

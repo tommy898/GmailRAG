@@ -121,17 +121,23 @@ class ContainerPackagingTests(unittest.TestCase):
         excluded = ["backend/.env", "backend/.env.production", "frontend/.env.local",
                     ".git/config", ".venv/bin/python", "backend/credentials.json", "backend/token.json",
                     "data/emails.json", "backend/models/model.safetensors", "docs/PROJECT_PLAN.md",
-                    "backend/app/private.key", "backend/app/__pycache__/main.pyc"]
+                    "backend/app/private.key", "backend/app/__pycache__/main.pyc",
+                    "supabase/schema.sql", "supabase/migrations/old.sql",
+                    "backend/db/.env", "backend/db/credentials.json",
+                    "backend/db/migrations/private.key"]
         for path in excluded:
             self.assertFalse(allowed_source_path(path), path)
         for path in ("backend/app/main.py", "backend/scripts/start_api.py", "backend/Dockerfile",
-                     "supabase/schema.sql", "supabase/migrations/202609300001_harden_client_permissions.sql"):
+                     "backend/db/schema.sql", "backend/db/migrations/202609300001_harden_client_permissions.sql"):
             self.assertTrue(allowed_source_path(path), path)
         for name in (".dockerignore", ".gcloudignore"):
             content = (ROOT / name).read_text()
             self.assertIn("**/.env", content)
             self.assertIn("**/credentials*.json", content)
             self.assertNotIn("!frontend", content)
+            self.assertIn("!backend/db/schema.sql", content)
+            self.assertIn("!backend/db/migrations/*.sql", content)
+            self.assertNotIn("!supabase/", content)
 
     def test_build_preflight_rejects_uncommitted_source_tags_and_unexpected_uploads(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -155,6 +161,8 @@ class ContainerPackagingTests(unittest.TestCase):
         self.assertIn("TRANSFORMERS_OFFLINE=1", dockerfile)
         self.assertIn("COPY --from=tested /tmp/tests-passed", dockerfile)
         self.assertIn("COPY backend/container/debian.sources", dockerfile)
+        self.assertIn("COPY backend/db/ ./db/", dockerfile)
+        self.assertNotIn("COPY supabase/", dockerfile)
         sources = (ROOT / "backend/container/debian.sources").read_text()
         self.assertIn("20260930T000000Z", sources)
         self.assertIn("Signed-By:", sources)

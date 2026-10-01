@@ -7,12 +7,12 @@ from pathlib import Path
 
 def allowed_source_path(path: str) -> bool:
     parts = Path(path).parts
-    if path in {".dockerignore", ".gcloudignore", "supabase/schema.sql"}:
+    if path in {".dockerignore", ".gcloudignore", "backend/db/schema.sql"}:
         return True
     if path == "backend/container/debian.sources":
         return True
-    if len(parts) == 3 and parts[:2] == ("supabase", "migrations"):
-        return parts[2].endswith(".sql")
+    if len(parts) == 4 and parts[:3] == ("backend", "db", "migrations"):
+        return parts[3].endswith(".sql")
     if len(parts) == 2 and parts[0] == "backend":
         return parts[1] in {
             "Dockerfile", "cloudbuild.yaml", "constraints.txt", "requirements.txt",

@@ -463,7 +463,7 @@ Review this schema design.
 After approval, convert it into:
 
 ```text
-supabase/schema.sql
+backend/db/schema.sql
 ```
 
 or Supabase migration files.

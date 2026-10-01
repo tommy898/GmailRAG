@@ -25,8 +25,7 @@ COPY backend/tests/ ./tests/
 COPY backend/model-artifacts.json backend/Dockerfile backend/cloudbuild.yaml ./
 COPY backend/container/ ./container/
 COPY .dockerignore .gcloudignore /workspace/
-COPY supabase/schema.sql /workspace/supabase/schema.sql
-COPY supabase/migrations/ /workspace/supabase/migrations/
+COPY backend/db/ ./db/
 RUN python -m unittest discover -s tests \
     && python -c "from pathlib import Path; Path('/tmp/tests-passed').touch()"
 
